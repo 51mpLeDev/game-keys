@@ -5,6 +5,14 @@ defineProps<{
   product: Product
 }>()
 
+const emit = defineEmits<{
+  buy: [product: Product]
+}>()
+
+function handleBuy(product: Product) {
+  emit('buy', product)
+}
+
 const images = import.meta.glob(
     '../assets/**/*.{png,jpg,jpeg,webp}',
     {

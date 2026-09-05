@@ -18,11 +18,38 @@ const categories = [
   'Другое',
 ]
 
-function handleBuy(product: Product) {
-  console.log('Buy product:', product)
+const API_URL = 'http://localhost:8080/api'
 
-  // Здесь позже:
-  // POST /api/orders
+async function handleBuy(product: Product) {
+  try {
+    const response = await fetch(`${API_URL}/orders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        sku: product.sku,
+        quantity: 1,
+      }),
+    })
+
+    if (!response.ok) {
+      const error = await response.text()
+
+      console.error('Order creation failed:', error)
+
+      return
+    }
+
+    const result = await response.json()
+
+    console.log('Order created:', result)
+
+    window.location.href = `/orders/${result.data.id}`
+  } catch (error) {
+    console.error('Order creation failed:', error)
+  }
 }
 </script>
 
@@ -198,9 +225,8 @@ function handleBuy(product: Product) {
 
   white-space: nowrap;
 
-  transition:
-      background-color 0.15s ease,
-      color 0.15s ease;
+  transition: background-color 0.15s ease,
+  color 0.15s ease;
 }
 
 .category:hover {
