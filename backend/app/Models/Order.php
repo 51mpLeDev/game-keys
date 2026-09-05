@@ -42,4 +42,9 @@ class Order extends Model
     {
         return $this->hasMany(InventoryKey::class);
     }
+
+    public function providerIssuances(): HasMany
+    {
+        return $this->hasMany(ProviderIssuance::class);
+    }
 }

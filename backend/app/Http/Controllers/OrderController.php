@@ -18,7 +18,11 @@ class OrderController extends Controller
             ->where('sku', $request->string('sku'))
             ->firstOrFail();
 
-        $order = $service->create($product);
+        $order = $service->create(
+            $product,
+            1,
+            $request->input('order_id'),
+        );
 
         return response()->json([
             'data' => $this->transform($order),

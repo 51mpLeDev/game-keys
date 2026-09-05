@@ -19,6 +19,12 @@ class StoreOrderRequest extends FormRequest
                 'string',
                 'max:100',
             ],
+
+            'order_id' => [
+                'nullable',
+                'string',
+                'max:64',
+            ],
         ];
     }
 }

@@ -51,10 +51,14 @@ seed:
 	docker compose exec backend php artisan db:seed
 
 test:
-	docker compose exec backend php artisan test
+	docker compose exec -e DB_DATABASE=game_keys_test -e QUEUE_CONNECTION=sync backend php artisan migrate:fresh --force
+	docker compose exec -e DB_DATABASE=game_keys_test -e QUEUE_CONNECTION=sync backend php artisan test tests/Unit tests/Feature/ExampleTest.php tests/Feature/MockProviderTest.php tests/Feature/OrderDeliveryRecoveryTest.php tests/Feature/PaymentWebhookTest.php
 
 test-race:
-	docker compose exec backend php artisan test --testsuite=Concurrency
+	docker compose -f docker-compose.yml -f docker-compose.test.yml up -d --force-recreate backend nginx
+	docker compose exec backend php artisan migrate:fresh --force
+	docker compose exec backend php artisan test --filter=PaymentWebhookConcurrencyTest
+	docker compose up -d --force-recreate backend nginx
 
 install:
 	docker compose exec backend composer install

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\OrderController;
+use App\Http\Controllers\OrderDeliveryController;
 use App\Http\Controllers\PaymentWebhookController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -25,6 +26,11 @@ Route::post(
 Route::get(
     '/orders/{order}',
     [OrderController::class, 'show']
+);
+
+Route::post(
+    '/orders/{order}/retry-delivery',
+    [OrderDeliveryController::class, 'retry']
 );
 
 Route::post(

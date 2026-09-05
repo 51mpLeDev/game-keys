@@ -1,0 +1,10 @@
+services:
+  backend:
+    environment:
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: game_keys_test
+      DB_USERNAME: game_keys
+      DB_PASSWORD: game_keys
+      QUEUE_CONNECTION: database

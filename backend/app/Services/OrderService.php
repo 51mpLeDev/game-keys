@@ -11,17 +11,22 @@ use RuntimeException;
 
 class OrderService
 {
-    public function create(Product $product, int $quantity = 1): Order
-    {
-        if ($quantity < 1) {
-            throw new RuntimeException(
-                'Quantity must be greater than zero.'
-            );
+    public function create(
+        Product $product,
+        int $quantity = 1,
+        ?string $publicId = null,
+    ): Order {
+        if ($quantity !== 1) {
+            throw new RuntimeException('Only one item per order is supported.');
         }
 
-        $order = DB::transaction(function () use ($product, $quantity) {
+        $order = DB::transaction(function () use (
+            $product,
+            $quantity,
+            $publicId
+        ) {
             $order = Order::create([
-                'public_id' => (string)Str::uuid(),
+                'public_id' => $publicId ?? (string) Str::uuid(),
                 'status' => OrderStatus::CREATED,
                 'amount' => $product->price * $quantity,
                 'currency' => $product->currency,
@@ -39,12 +44,6 @@ class OrderService
             return $order->load('items');
         });
 
-        /*
-         * Webhook мог прийти до создания заказа.
-         *
-         * Теперь, когда заказ появился, проверяем,
-         * нет ли уже сохранённого payment event.
-         */
         app(PaymentWebhookService::class)->processOrder($order);
 
         return $order->refresh()->load('items');
