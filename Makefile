@@ -79,6 +79,10 @@ env:
 		cp backend/.env.example backend/.env; \
 		echo "Created backend/.env"; \
 	fi
+	@if [ ! -f frontend/.env ]; then \
+		cp frontend/.env.example frontend/.env; \
+		echo "Created frontend/.env"; \
+	fi
 
 install: env
 	docker compose exec backend composer install
