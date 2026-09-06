@@ -135,7 +135,7 @@ function img(name: string) {
 
   color: #171717;
 
-  font-size: 8px;
+  font-size: 10px;
   line-height: 11px;
   font-weight: 700;
 

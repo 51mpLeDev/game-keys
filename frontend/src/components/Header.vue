@@ -251,10 +251,9 @@ onBeforeUnmount(() => {
   height: 100%;
   margin: 0 auto;
 
-  display: grid;
-  grid-template-columns: 92px minmax(300px, 1fr) 32px;
-
+  display: flex;
   align-items: center;
+  justify-content: flex-end;
 
   gap: 16px;
 }
@@ -269,7 +268,7 @@ onBeforeUnmount(() => {
 
 .catalog-button {
   width: 92px;
-  height: 32px;
+  height: 40px;
 
   display: flex;
   align-items: center;
@@ -285,7 +284,7 @@ onBeforeUnmount(() => {
   background: #050505;
   color: #ffffff;
 
-  font-size: 9px;
+  font-size: 10px;
   line-height: 1;
   font-weight: 700;
 }
@@ -352,7 +351,7 @@ onBeforeUnmount(() => {
 
   text-align: left;
 
-  font-size: 8px;
+  font-size: 9px;
   line-height: 1;
   font-weight: 600;
 }
@@ -405,7 +404,7 @@ onBeforeUnmount(() => {
 
   color: #252d37;
 
-  font-size: 8px;
+  font-size: 9px;
   line-height: 11px;
   font-weight: 800;
 }
@@ -417,7 +416,7 @@ onBeforeUnmount(() => {
 .catalog-menu__item {
   color: #6f7883;
 
-  font-size: 7px;
+  font-size: 8px;
   line-height: 10px;
 
   white-space: nowrap;
@@ -483,7 +482,9 @@ onBeforeUnmount(() => {
 .header__search {
   position: relative;
 
-  height: 32px;
+  height: 40px;
+  width: 100%;
+  max-width: 550px;
 
   display: flex;
   align-items: center;
@@ -509,7 +510,7 @@ onBeforeUnmount(() => {
 
   color: #222222;
 
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .header__search input::placeholder {
@@ -519,10 +520,10 @@ onBeforeUnmount(() => {
 .header__search-favorite {
   position: absolute;
 
-  right: 29px;
+  right: 38px;
 
-  width: 24px;
-  height: 24px;
+  width: 38px;
+  height: 38px;
 
   padding: 0;
 
@@ -532,11 +533,11 @@ onBeforeUnmount(() => {
   background: #eef1f6;
   color: #778399;
 
-  font-size: 10px;
+  font-size: 24px;
 }
 
 .header__search-button {
-  width: 30px;
+  width: 40px;
   height: 100%;
 
   flex-shrink: 0;
@@ -548,7 +549,7 @@ onBeforeUnmount(() => {
   background: #050505;
   color: #ffffff;
 
-  font-size: 14px;
+  font-size: 28px;
 }
 
 /* =========================================================
@@ -556,8 +557,8 @@ onBeforeUnmount(() => {
 ========================================================= */
 
 .header__profile {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
 
   display: grid;
   place-items: center;
@@ -570,6 +571,6 @@ onBeforeUnmount(() => {
   background: #f2f4f7;
   color: #8290a3;
 
-  font-size: 11px;
+  font-size: 13px;
 }
 </style>

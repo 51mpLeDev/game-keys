@@ -276,7 +276,7 @@ async function handleBuy(product: Product) {
   background: #f1f3f6;
   color: #a0a8b3;
 
-  font-size: 8px;
+  font-size: 9px;
   line-height: 1;
   font-weight: 700;
 
