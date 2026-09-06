@@ -179,6 +179,21 @@ async function payOrder() {
   } finally {
     paying.value = false
   }
+
+  const originalAmount = computed(() => {
+    return order.value?.items.reduce(
+        (sum, item) => sum + item.price * item.quantity,
+        0,
+    ) ?? 0
+  })
+
+  const discount = computed(() => {
+    if (!order.value) {
+      return 0
+    }
+
+    return Math.max(0, originalAmount.value - order.value.amount)
+  })
 }
 
 async function retryDelivery() {
@@ -303,12 +318,31 @@ async function retryDelivery() {
             </div>
           </div>
 
-          <div class="total">
-            <span>Итого</span>
+          <div class="total-details">
+            <div class="total-details__row">
+              <span>Стоимость товара</span>
 
-            <strong>
-              {{ order.amount }} {{ order.currency }}
-            </strong>
+              <span>
+                {{ originalAmount }} {{ order.currency }}
+              </span>
+            </div>
+
+            <div
+                v-if="discount > 0"
+                class="total-details__row total-details__row--discount"
+            >
+              <span>Скидка</span>
+
+              <span> −{{ discount }} {{ order.currency }} </span>
+            </div>
+
+            <div class="total-details__row total-details__row--total">
+              <span>Итого</span>
+
+              <strong>
+                {{ order.amount }} {{ order.currency }}
+              </strong>
+            </div>
           </div>
 
         </section>
@@ -676,5 +710,38 @@ async function retryDelivery() {
   margin: -10px 0 0;
   color: #777;
   font-size: 14px;
+}
+
+.total-details {
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid #eee;
+}
+
+.total-details__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+
+  padding: 5px 0;
+
+  color: #777;
+  font-size: 14px;
+}
+
+.total-details__row--discount {
+  color: #16834b;
+}
+
+.total-details__row--total {
+  margin-top: 8px;
+  padding-top: 12px;
+
+  color: #111;
+
+  border-top: 1px solid #eee;
+
+  font-size: 18px;
 }
 </style>

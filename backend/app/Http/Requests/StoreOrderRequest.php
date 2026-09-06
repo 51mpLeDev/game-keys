@@ -25,6 +25,12 @@ class StoreOrderRequest extends FormRequest
                 'string',
                 'max:64',
             ],
+
+            'promo_code' => [
+                'nullable',
+                'string',
+                'max:50',
+            ],
         ];
     }
 }

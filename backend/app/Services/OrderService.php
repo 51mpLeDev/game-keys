@@ -16,6 +16,7 @@ class OrderService
         Product $product,
         int $quantity = 1,
         ?string $publicId = null,
+        ?string $promoCode = null,
     ): Order {
         if ($quantity !== 1) {
             throw new RuntimeException('Only one item per order is supported.');
@@ -37,14 +38,28 @@ class OrderService
             $order = DB::transaction(function () use (
                 $product,
                 $quantity,
-                $publicId
+                $publicId,
+                $promoCode
             ) {
+                $originalAmount = $product->price * $quantity;
+
                 $order = Order::create([
                     'public_id' => $publicId,
                     'status' => OrderStatus::CREATED,
-                    'amount' => $product->price * $quantity,
+                    'amount' => $originalAmount,
                     'currency' => $product->currency,
                 ]);
+
+
+                if ($promoCode !== null && trim($promoCode) !== '') {
+                    $promo = app(PromoCodeService::class)->apply(
+                        $promoCode,
+                        $order
+                    );
+
+                    $order->amount = $promo['amount'];
+                    $order->save();
+                }
 
                 $order->items()->create([
                     'product_id' => $product->id,

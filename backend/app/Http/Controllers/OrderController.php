@@ -24,6 +24,7 @@ class OrderController extends Controller
             $product,
             1,
             $request->input('order_id'),
+            $request->input('promo_code'),
         );
 
         return response()->json([

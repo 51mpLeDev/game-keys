@@ -109,8 +109,6 @@ class OrderCreationConcurrencyTest extends TestCase
 
         $exitCode = proc_close($process['process']);
 
-        fwrite(STDOUT, "\nORDER: {$stdout}\n");
-
         if ($exitCode !== 0) {
             $this->fail(
                 "Order process failed.\nSTDOUT: {$stdout}\nSTDERR: {$stderr}"

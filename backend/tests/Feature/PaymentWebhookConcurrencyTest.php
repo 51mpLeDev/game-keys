@@ -147,8 +147,6 @@ class PaymentWebhookConcurrencyTest extends TestCase
 
         $exitCode = proc_close($process['process']);
 
-        fwrite(STDOUT, "\nWEBHOOK: {$stdout}\n");
-
         if ($exitCode !== 0) {
             $this->fail(
                 "Webhook process failed.\nSTDOUT: {$stdout}\nSTDERR: {$stderr}"

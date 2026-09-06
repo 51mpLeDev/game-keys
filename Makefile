@@ -62,13 +62,14 @@ test:
 		tests/Feature/MockProviderTest.php \
 		tests/Feature/OrderDeliveryRecoveryTest.php \
 		tests/Feature/PaymentWebhookTest.php \
-		tests/Feature/OrderCreationIdempotencyTest.php
+		tests/Feature/OrderCreationIdempotencyTest.php \
+		tests/Feature/PromoCodeTest.php
 
 test-race:
 	docker compose -f docker-compose.yml -f docker-compose.test.yml up -d --force-recreate backend nginx
 	docker compose exec backend php artisan migrate:fresh --force
 	docker compose exec backend php artisan test \
-		--filter='(OrderCreationConcurrencyTest|PaymentWebhookConcurrencyTest)'; \
+		--filter='(OrderCreationConcurrencyTest|PaymentWebhookConcurrencyTest|PromoCodeConcurrencyTest)'; \
 	status=$$?; \
 	docker compose up -d --force-recreate backend nginx; \
 	exit $$status

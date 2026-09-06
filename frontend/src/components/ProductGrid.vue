@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {ref} from 'vue'
 import ProductCard from './ProductCard.vue'
 
 import {
@@ -20,7 +21,24 @@ const categories = [
 
 const API_URL = 'http://localhost:8080/api'
 
+const promoCode = ref('')
+const promoError = ref('')
+const buyingSku = ref<string | null>(null)
+
 async function handleBuy(product: Product) {
+  // Защита от повторного клика по той же карточке.
+  if (buyingSku.value === product.sku) {
+    return
+  }
+
+  buyingSku.value = product.sku
+  promoError.value = ''
+
+  // Один order_id на одну попытку покупки.
+  // Если запрос будет повторён с этим ID,
+  // backend вернёт тот же заказ.
+  const orderId = crypto.randomUUID()
+
   try {
     const response = await fetch(`${API_URL}/orders`, {
       method: 'POST',
@@ -31,30 +49,69 @@ async function handleBuy(product: Product) {
       body: JSON.stringify({
         sku: product.sku,
         quantity: 1,
+        order_id: orderId,
+        promo_code: promoCode.value.trim() || null,
       }),
     })
 
-    if (!response.ok) {
-      const error = await response.text()
+    const result = await response.json()
 
-      console.error('Order creation failed:', error)
+    if (!response.ok) {
+      promoError.value =
+          result.message || 'Не удалось создать заказ.'
 
       return
     }
-
-    const result = await response.json()
 
     console.log('Order created:', result)
 
     window.location.href = `/orders/${result.data.id}`
   } catch (error) {
     console.error('Order creation failed:', error)
+
+    promoError.value = 'Не удалось соединиться с сервером.'
+  } finally {
+    buyingSku.value = null
   }
 }
 </script>
 
 <template>
   <section class="products">
+
+    <!-- Promo -->
+    <div class="promo">
+      <div class="promo__content">
+        <div class="promo__title">
+          Промокод
+        </div>
+
+        <div class="promo__form">
+          <input
+              v-model="promoCode"
+              type="text"
+              class="promo__input"
+              placeholder="Введите промокод"
+              maxlength="50"
+              @input="promoError = ''"
+          />
+
+          <span
+              v-if="promoCode"
+              class="promo__hint"
+          >
+            Применится при покупке
+          </span>
+        </div>
+      </div>
+
+      <div
+          v-if="promoError"
+          class="promo__error"
+      >
+        {{ promoError }}
+      </div>
+    </div>
 
     <!-- Popular -->
     <div class="product-section">
@@ -315,6 +372,114 @@ async function handleBuy(product: Product) {
   .products__grid {
     grid-template-columns:
       repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Promo */
+
+.promo {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+
+  border-radius: 9px;
+
+  background: #f7f8fa;
+  border: 1px solid #eef0f3;
+}
+
+.promo__content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.promo__title {
+  flex-shrink: 0;
+
+  color: #263242;
+
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 800;
+}
+
+.promo__form {
+  min-width: 0;
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  flex: 1;
+}
+
+.promo__input {
+  width: 180px;
+  height: 27px;
+
+  padding: 0 10px;
+
+  border: 1px solid #e2e5e9;
+  border-radius: 7px;
+
+  outline: none;
+
+  background: #ffffff;
+  color: #263242;
+
+  font-size: 9px;
+  font-weight: 600;
+
+  transition: border-color 0.15s ease,
+  box-shadow 0.15s ease;
+}
+
+.promo__input::placeholder {
+  color: #a0a8b3;
+}
+
+.promo__input:focus {
+  border-color: #b9c0c9;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.04);
+}
+
+.promo__hint {
+  color: #9aa2ad;
+
+  font-size: 8px;
+  line-height: 12px;
+  font-weight: 600;
+}
+
+.promo__error {
+  margin-top: 6px;
+
+  color: #d34b4b;
+
+  font-size: 8px;
+  line-height: 12px;
+  font-weight: 700;
+}
+
+/* Mobile */
+
+@media (max-width: 520px) {
+  .promo__content {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .promo__form {
+    width: 100%;
+  }
+
+  .promo__input {
+    width: 100%;
+  }
+
+  .promo__hint {
+    display: none;
   }
 }
 </style>
