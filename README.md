@@ -13,12 +13,35 @@
 - PHP 8.4
 - Node.js 22
 
-## Запуск
+## Быстрый запуск
 
-Запустить контейнеры:
+Клонировать репозиторий:
 
 ```bash
-docker compose up -d --build
+git clone https://github.com/51mpLeDev/game-keys.git
+cd game-keys
+```
+
+Собрать и запустить контейнеры:
+
+```bash
+make build
+make up
+```
+
+```bash
+make install
+```
+
+Запустить миграции и сидеры:
+```bash
+  make fresh
+```
+
+Запустить queue worker:
+
+```bash
+make queue
 ```
 
 Frontend:
@@ -29,16 +52,72 @@ Backend API:
 
 http://localhost:8080
 
-После запуска выполнить миграции и seed:
+Admin:
+
+http://localhost:5173/admin/orders
+
+## Make commands
+
+### Запуск проекта
 
 ```bash
-docker compose exec backend php artisan migrate --seed
+make up
 ```
 
-Остановить проект:
+Запускает Docker-контейнеры.
+
+### Остановка проекта
 
 ```bash
-docker compose down
+make down
+```
+
+### Просмотр состояния контейнеров
+
+```bash
+make ps
+```
+
+### Просмотр логов
+
+```bash
+make logs
+```
+
+### Queue worker
+
+```bash
+make queue
+```
+
+Queue worker необходимо запустить отдельно после запуска контейнеров.
+
+Для production-like сценария queue worker должен работать постоянно.
+
+### Тесты
+
+Обычные тесты:
+
+```bash
+make test
+```
+
+Concurrency tests:
+
+```bash
+make test-race
+```
+
+### Полный сценарий
+
+Для проверки проекта с нуля:
+
+```bash
+make build
+make up
+make queue
+make test
+make test-race
 ```
 
 ## Основной функционал
@@ -138,7 +217,7 @@ Webhook считается at-least-once.
 
 В базе есть unique constraint на `payment_events.event_id`.
 
-Поэтому повторная доставка одного события не приводит к повторной оплате или повторной выдаче.
+Поэтому повторная доставка одного события не приводит к повторной обработке.
 
 Также поддерживается ситуация, когда webhook приходит раньше завершения создания заказа.
 
@@ -152,17 +231,17 @@ Webhook считается at-least-once.
 
 ```text
 BEGIN
-
-lock order
-
-check current order status
-
-lock available inventory key
-
-reserve key
-
-mark order as delivering
-
+    ↓
+LOCK order
+    ↓
+CHECK current state
+    ↓
+LOCK inventory key
+    ↓
+RESERVE key
+    ↓
+UPDATE order
+    ↓
 COMMIT
 ```
 
@@ -170,13 +249,17 @@ COMMIT
 
 ```text
 BEGIN
-
-lock issuance
-lock inventory key
-mark key as issued
-mark issuance as issued
-mark order as delivered
-
+    ↓
+LOCK issuance
+    ↓
+LOCK inventory key
+    ↓
+MARK key as issued
+    ↓
+MARK issuance as issued
+    ↓
+MARK order as delivered
+    ↓
 COMMIT
 ```
 
@@ -197,12 +280,6 @@ make test-race
 - 50 одновременных запросов создания заказа;
 - 50 одновременных payment webhook для одного заказа;
 - 50 одновременных запросов с одним promo code.
-
-Ожидаемый результат:
-
-```text
-3 passed
-```
 
 ### Order creation race
 
@@ -367,7 +444,7 @@ http://localhost:5173
 
 ### 2. Применить промокод
 
-Ввести промокод:
+Ввести:
 
 ```text
 PROMO10
@@ -474,6 +551,28 @@ HTTP controllers отвечают за валидацию и API response.
 
 Критические операции выполняются внутри database transactions.
 
+## Queue
+
+Для фоновой обработки используется Laravel queue.
+
+Queue worker запускается отдельно:
+
+```bash
+make queue
+```
+
+В отдельном терминале рекомендуется оставить worker запущенным:
+
+```text
+Terminal 1:
+make up
+
+Terminal 2:
+make queue
+```
+
+После этого приложение готово к работе.
+
 ## Project structure
 
 ```text
@@ -549,7 +648,7 @@ make test-race
 - полноценная пользовательская система;
 - production monitoring.
 
-Вместо внешних сервисов используются mock providers и mock payment webhook.
+Вместо внешних сервисов используются mock-реализации.
 
 ## Основной архитектурный принцип
 
@@ -565,7 +664,7 @@ check
 update
 ```
 
-Отдельными запросами.
+отдельными запросами.
 
 Вместо этого используется:
 

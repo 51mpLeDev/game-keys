@@ -74,6 +74,13 @@ test-race:
 	docker compose up -d --force-recreate backend nginx; \
 	exit $$status
 
-install:
+env:
+	@if [ ! -f backend/.env ]; then \
+		cp backend/.env.example backend/.env; \
+		echo "Created backend/.env"; \
+	fi
+
+install: env
 	docker compose exec backend composer install
 	docker compose exec frontend npm install
+	docker compose exec backend php artisan key:generate
