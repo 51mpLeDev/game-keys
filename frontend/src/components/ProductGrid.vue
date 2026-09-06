@@ -114,7 +114,7 @@ async function handleBuy(product: Product) {
     </div>
 
     <!-- Popular -->
-    <div class="product-section">
+    <div class="product-section" v-if="popularProducts.length">
       <div class="product-section__header product-section__header--popular">
         <h2 class="product-section__title">
           Популярные товары
@@ -153,7 +153,7 @@ async function handleBuy(product: Product) {
     </div>
 
     <!-- Recommended -->
-    <div class="product-section">
+    <div class="product-section" v-if="recommendedProducts.length">
       <div class="product-section__header">
         <h2 class="product-section__title">
           Рекомендованные товары
@@ -178,7 +178,7 @@ async function handleBuy(product: Product) {
     </div>
 
     <!-- Other -->
-    <div class="product-section">
+    <div class="product-section" v-if="otherProducts.length">
       <div class="product-section__header">
         <h2 class="product-section__title">
           Другие товары
