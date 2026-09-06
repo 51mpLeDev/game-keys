@@ -26,7 +26,7 @@ class OrderController extends Controller
 
         return response()->json([
             'data' => $this->transform($order),
-        ], 201);
+        ], $order->wasRecentlyCreated ? 201 : 200);
     }
 
     public function show(string $order): JsonResponse

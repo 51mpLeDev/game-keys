@@ -16,12 +16,6 @@ class PaymentWebhookService
     {
         $event = $this->storeEvent($payload);
 
-        /*
-         * Заказ может ещё не существовать.
-         *
-         * В таком случае событие остаётся в payment_events
-         * и будет обработано позже при создании заказа.
-         */
         $order = Order::query()
             ->where('public_id', $event->order_public_id)
             ->first();
@@ -50,12 +44,6 @@ class PaymentWebhookService
                 throw $exception;
             }
 
-            /*
-             * Повторный event_id — нормальный сценарий
-             * для at-least-once webhook.
-             *
-             * Возвращаем уже существующее событие.
-             */
             return PaymentEvent::query()
                 ->where('event_id', $payload['event_id'])
                 ->firstOrFail();
@@ -70,12 +58,6 @@ class PaymentWebhookService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            /*
-             * Берём последнее событие по времени,
-             * когда его создал payment provider.
-             *
-             * Поэтому webhook'и могут прийти в любом порядке.
-             */
             $latestEvent = PaymentEvent::query()
                 ->where('order_public_id', $order->public_id)
                 ->orderByDesc('provider_created_at')
@@ -86,10 +68,6 @@ class PaymentWebhookService
                 return false;
             }
 
-            /*
-             * Сумма и валюта webhook должны совпадать
-             * с заказом.
-             */
             if (
                 $latestEvent->amount !== $order->amount ||
                 strtoupper($latestEvent->currency) !== strtoupper($order->currency)
@@ -97,10 +75,6 @@ class PaymentWebhookService
                 return false;
             }
 
-            /*
-             * Если платёж неуспешен, переводим CREATED
-             * в payment_failed.
-             */
             if ($latestEvent->status === 'failed') {
                 if ($order->status === OrderStatus::CREATED) {
                     $order->update([
@@ -119,11 +93,6 @@ class PaymentWebhookService
                 return false;
             }
 
-            /*
-             * Заказ уже полностью обработан.
-             *
-             * Никакой повторной выдачи.
-             */
             if ($order->status === OrderStatus::DELIVERED) {
                 $latestEvent->update([
                     'processed_at' => $latestEvent->processed_at ?? now(),
@@ -132,12 +101,6 @@ class PaymentWebhookService
                 return false;
             }
 
-            /*
-             * Кто-то уже подтвердил оплату.
-             *
-             * Второй concurrent webhook не должен
-             * запускать новую payment transition.
-             */
             if (
                 $order->status === OrderStatus::PAID ||
                 $order->status === OrderStatus::DELIVERING
@@ -145,12 +108,6 @@ class PaymentWebhookService
                 return false;
             }
 
-            /*
-             * OUT_OF_STOCK / DELIVERY_FAILED и другие финальные
-             * состояния пока не переводим автоматически назад.
-             *
-             * Retry сделаем отдельным механизмом Stage 3.
-             */
             if ($order->status !== OrderStatus::CREATED) {
                 return false;
             }
@@ -167,13 +124,6 @@ class PaymentWebhookService
             return true;
         });
 
-        /*
-         * Важно:
-         *
-         * payment transaction уже завершилась.
-         *
-         * Теперь можно отдельно заниматься delivery.
-         */
         if ($shouldDeliver) {
             $order->refresh();
 

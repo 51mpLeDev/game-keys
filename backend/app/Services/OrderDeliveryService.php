@@ -20,16 +20,6 @@ class OrderDeliveryService
 
     public function deliver(Order $order): Order
     {
-        /*
-         * STEP 1.
-         *
-         * Короткая транзакция:
-         * - блокируем заказ;
-         * - выбираем один ключ;
-         * - резервируем его.
-         *
-         * Provider здесь НЕ вызываем.
-         */
         $delivery = DB::transaction(function () use ($order) {
             $order = Order::query()
                 ->whereKey($order->id)
@@ -67,20 +57,12 @@ class OrderDeliveryService
                 $item->id,
             );
 
-            /*
-             * Если provider уже знает этот request_id,
-             * используем его существующую выдачу.
-             */
             $issuance = ProviderIssuance::query()
                 ->where('provider', $providerName)
                 ->where('request_id', $requestId)
                 ->lockForUpdate()
                 ->first();
 
-            /*
-             * Если Provider уже выдал код, повторно ничего
-             * резервировать/вызывать не нужно.
-             */
             if (
                 $issuance &&
                 $issuance->status === 'issued' &&
@@ -109,10 +91,6 @@ class OrderDeliveryService
                 return null;
             }
 
-            /*
-             * Сначала пытаемся найти ключ, который уже
-             * зарезервирован именно этим заказом.
-             */
             $key = InventoryKey::query()
                 ->where('product_id', $item->product_id)
                 ->where('order_id', $order->id)
@@ -121,9 +99,6 @@ class OrderDeliveryService
                 ->lockForUpdate()
                 ->first();
 
-            /*
-             * Если ключа ещё нет — берём первый свободный.
-             */
             if (!$key) {
                 $key = InventoryKey::query()
                     ->where('product_id', $item->product_id)
@@ -159,20 +134,12 @@ class OrderDeliveryService
             ];
         });
 
-        /*
-         * Уже обработан / нет stock / неподходящий статус.
-         */
         if ($delivery === null) {
             return $order
                 ->refresh()
                 ->load('items');
         }
 
-        /*
-         * STEP 2.
-         *
-         * Provider вызывается ПОСЛЕ commit.
-         */
         try {
             $code = $this->provider->issue(
                 requestId: $delivery['request_id'],
@@ -181,23 +148,11 @@ class OrderDeliveryService
                 inventoryKeyId: $delivery['inventory_key_id'],
             );
         } catch (Throwable $exception) {
-            /*
-             * Provider мог успеть выдать результат,
-             * но клиент получил timeout.
-             *
-             * Поэтому сначала проверяем ProviderIssuance.
-             */
             $issuance = ProviderIssuance::query()
                 ->where('request_id', $delivery['request_id'])
                 ->where('provider', config('providers.default', 'provider_a'))
                 ->first();
 
-            /*
-             * Если результат уже сохранён как issued,
-             * НЕ переводим заказ в delivery_failed.
-             *
-             * Следующий retry сможет завершить доставку.
-             */
             if ($issuance?->status === 'issued') {
                 DB::transaction(function () use ($delivery, $issuance) {
                     $lockedOrder = Order::query()
@@ -249,12 +204,6 @@ class OrderDeliveryService
                 ->load('items');
         }
 
-        /*
-         * STEP 3.
-         *
-         * Provider успешно выдал код.
-         * Теперь фиксируем всё одной короткой транзакцией.
-         */
         DB::transaction(function () use ($delivery, $code) {
             $order = Order::query()
                 ->whereKey($delivery['order_id'])
@@ -277,10 +226,7 @@ class OrderDeliveryService
                 ->lockForUpdate()
                 ->first();
 
-            /*
-             * Provider должен был создать issuance.
-             * Но если его нет — создаём его здесь как защиту.
-             */
+
             if (!$issuance) {
                 $issuance = ProviderIssuance::create([
                     'provider' => $provider,
@@ -302,9 +248,6 @@ class OrderDeliveryService
                 ]);
             }
 
-            /*
-             * Один inventory key → один order.
-             */
             if ($key->status !== 'issued') {
                 $key->update([
                     'status' => 'issued',
