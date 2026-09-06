@@ -37,3 +37,8 @@ Route::post(
     '/webhooks/payment',
     PaymentWebhookController::class
 );
+
+Route::get(
+    '/admin/orders',
+    [OrderController::class, 'adminIndex']
+);

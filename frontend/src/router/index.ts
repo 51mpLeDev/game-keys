@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '../views/HomeView.vue'
 import OrderView from '../views/OrderView.vue'
+import AdminOrdersView from '../views/AdminOrdersView.vue'
 
 const router = createRouter({
     history: createWebHistory(),
@@ -14,6 +15,11 @@ const router = createRouter({
             path: '/orders/:id',
             name: 'order',
             component: OrderView,
+        },
+        {
+            path: '/admin/orders',
+            name: 'admin-orders',
+            component: AdminOrdersView,
         },
     ],
 })
