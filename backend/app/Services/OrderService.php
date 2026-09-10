@@ -12,6 +12,11 @@ use RuntimeException;
 
 class OrderService
 {
+    public function __construct(
+        private readonly ReservationService $reservation,
+    ) {
+    }
+
     public function create(
         Product $product,
         int $quantity = 1,
@@ -20,16 +25,6 @@ class OrderService
     ): Order {
         if ($quantity !== 1) {
             throw new RuntimeException('Only one item per order is supported.');
-        }
-
-        if ($publicId) {
-            $existingOrder = Order::query()
-                ->where('public_id', $publicId)
-                ->first();
-
-            if ($existingOrder) {
-                return $existingOrder->load('items');
-            }
         }
 
         $publicId ??= (string) Str::uuid();
@@ -41,6 +36,18 @@ class OrderService
                 $publicId,
                 $promoCode
             ) {
+                $product = Product::query()
+                    ->whereKey($product->id)
+                    ->firstOrFail();
+
+                $existingOrder = Order::query()
+                    ->where('public_id', $publicId)
+                    ->first();
+
+                if ($existingOrder) {
+                    return $existingOrder->load('items', 'inventoryKeys');
+                }
+
                 $originalAmount = $product->price * $quantity;
 
                 $order = Order::create([
@@ -50,15 +57,15 @@ class OrderService
                     'currency' => $product->currency,
                 ]);
 
-
                 if ($promoCode !== null && trim($promoCode) !== '') {
                     $promo = app(PromoCodeService::class)->apply(
                         $promoCode,
                         $order
                     );
 
-                    $order->amount = $promo['amount'];
-                    $order->save();
+                    $order->update([
+                        'amount' => $promo['amount'],
+                    ]);
                 }
 
                 $order->items()->create([
@@ -70,22 +77,26 @@ class OrderService
                     'quantity' => $quantity,
                 ]);
 
-                return $order->load('items');
-            });
+                $this->reservation->reserve($product, $order);
+
+                return $order->load('items', 'inventoryKeys');
+            }, 3);
         } catch (QueryException $exception) {
             if ($publicId && $this->isDuplicatePublicId($exception)) {
                 return Order::query()
                     ->where('public_id', $publicId)
                     ->firstOrFail()
-                    ->load('items');
+                    ->load('items', 'inventoryKeys');
             }
 
             throw $exception;
         }
 
+        $order = $order->refresh()->load('items', 'inventoryKeys');
+
         app(PaymentWebhookService::class)->processOrder($order);
 
-        return $order->refresh()->load('items');
+        return $order->refresh()->load('items', 'inventoryKeys');
     }
 
     private function isDuplicatePublicId(QueryException $exception): bool

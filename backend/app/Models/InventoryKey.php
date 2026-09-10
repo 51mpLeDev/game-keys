@@ -12,11 +12,13 @@ class InventoryKey extends Model
         'code',
         'status',
         'order_id',
+        'reserved_until',
         'issued_at',
     ];
 
     protected $casts = [
         'issued_at' => 'datetime',
+        'reserved_until' => 'datetime',
     ];
 
     public function product(): BelongsTo

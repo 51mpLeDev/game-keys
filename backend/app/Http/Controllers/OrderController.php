@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\OrderStatus;
+use App\Exceptions\OutOfStockException;
 use App\Http\Requests\StoreOrderRequest;
 use App\Models\Order;
 use App\Models\Product;
@@ -20,12 +21,19 @@ class OrderController extends Controller
             ->where('sku', $request->string('sku'))
             ->firstOrFail();
 
-        $order = $service->create(
-            $product,
-            1,
-            $request->input('order_id'),
-            $request->input('promo_code'),
-        );
+        try {
+            $order = $service->create(
+                $product,
+                1,
+                $request->input('order_id'),
+                $request->input('promo_code'),
+            );
+        } catch (OutOfStockException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'code' => 'out_of_stock',
+            ], 409);
+        }
 
         return response()->json([
             'data' => $this->transform($order),
@@ -74,6 +82,10 @@ class OrderController extends Controller
 
             'paid_at' => $order->paid_at?->toISOString(),
             'delivered_at' => $order->delivered_at?->toISOString(),
+
+            'reservation' => $order->inventoryKeys
+                ->first(fn ($key) => $key->status === 'reserved')
+                ?->reserved_until?->toISOString(),
         ];
     }
 

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\InventoryKey;
 use App\Models\Order;
 use App\Models\PromoCode;
 use App\Models\PromoCodeUsage;
@@ -31,6 +32,14 @@ class PromoCodeConcurrencyTest extends TestCase
             'currency' => 'RUB',
             'image' => null,
         ]);
+
+        for ($i = 1; $i <= 10; $i++) {
+            InventoryKey::create([
+                'product_id' => $product->id,
+                'code' => "PROMO-RACE-KEY-{$i}",
+                'status' => 'available',
+            ]);
+        }
 
         PromoCode::create([
             'code' => 'PROMO10',
