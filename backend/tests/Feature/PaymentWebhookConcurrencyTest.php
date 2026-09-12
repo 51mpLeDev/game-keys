@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\InventoryKey;
 use App\Models\Order;
 use App\Models\Product;
+use App\Services\OrderService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -35,21 +36,11 @@ class PaymentWebhookConcurrencyTest extends TestCase
             'status' => 'available',
         ]);
 
-        $order = Order::create([
-            'public_id' => (string) Str::uuid(),
-            'status' => 'created',
-            'amount' => 1290,
-            'currency' => 'RUB',
-        ]);
-
-        $order->items()->create([
-            'product_id' => $product->id,
-            'sku' => $product->sku,
-            'name' => $product->name,
-            'price' => $product->price,
-            'currency' => $product->currency,
-            'quantity' => 1,
-        ]);
+        $order = app(OrderService::class)->create(
+            $product,
+            1,
+            (string) Str::uuid(),
+        );
 
         $processes = [];
 

@@ -13,6 +13,7 @@ help:
 	@echo ""
 	@echo "Laravel:"
 	@echo "  make shell       Open Laravel container shell"
+	@echo "  make artisan     Run artisan commands"
 	@echo "  make migrate     Run migrations"
 	@echo "  make queue       Run queue"
 	@echo "  make fresh       Fresh migrations + seed"
@@ -41,6 +42,14 @@ ps:
 
 shell:
 	docker compose exec backend bash
+
+.PHONY: help build up down restart logs ps shell migrate fresh seed test test-race install artisan
+
+artisan:
+	docker compose exec backend php artisan $(filter-out $@,$(MAKECMDGOALS))
+
+%:
+	@:
 
 migrate:
 	docker compose exec backend php artisan migrate

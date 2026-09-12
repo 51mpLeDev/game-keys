@@ -2,7 +2,9 @@
 import type { Product } from '../data/products'
 
 defineProps<{
-  product: Product
+  product: Product & {
+    stock: number
+  }
 }>()
 
 const emit = defineEmits<{
@@ -60,9 +62,10 @@ function img(name: string) {
       <button
           class="product-card__button"
           type="button"
+          :disabled="product.stock <= 0"
           @click="handleBuy(product)"
       >
-        Купить
+        {{ product.stock > 0 ? 'Купить' : 'Нет в наличии' }}
       </button>
     </div>
   </article>
@@ -196,5 +199,17 @@ function img(name: string) {
   background: #222222;
 
   transform: translateY(-1px);
+}
+
+.product-card__button:disabled {
+  background: #d7dbe0;
+  color: #8b929a;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.product-card__button:disabled:hover {
+  background: #d7dbe0;
+  transform: none;
 }
 </style>

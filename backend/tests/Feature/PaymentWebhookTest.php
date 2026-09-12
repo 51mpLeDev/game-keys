@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\InventoryKey;
 use App\Models\Order;
 use App\Models\Product;
+use App\Services\OrderService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -35,21 +36,11 @@ class PaymentWebhookTest extends TestCase
             'status' => 'available',
         ]);
 
-        $order = Order::create([
-            'public_id' => 'test-order-001',
-            'status' => 'created',
-            'amount' => 1290,
-            'currency' => 'RUB',
-        ]);
-
-        $order->items()->create([
-            'product_id' => $product->id,
-            'sku' => $product->sku,
-            'name' => $product->name,
-            'price' => $product->price,
-            'currency' => $product->currency,
-            'quantity' => 1,
-        ]);
+        $order = app(OrderService::class)->create(
+            $product,
+            1,
+            'test-order-001',
+        );
 
         $payload = [
             'event_id' => 'evt-test-001',
@@ -73,6 +64,11 @@ class PaymentWebhookTest extends TestCase
         $this->assertSame(
             1,
             $order->inventoryKeys()->count()
+        );
+
+        $this->assertSame(
+            'issued',
+            $order->inventoryKeys()->first()->status
         );
 
         $this->assertSame(
@@ -124,7 +120,7 @@ class PaymentWebhookTest extends TestCase
             'order_public_id' => $orderId,
         ]);
 
-        $order = app(\App\Services\OrderService::class)->create(
+        $order = app(OrderService::class)->create(
             $product,
             1,
             $orderId,
@@ -145,6 +141,166 @@ class PaymentWebhookTest extends TestCase
         $this->assertSame(
             'TEST-KEY-BEFORE-ORDER',
             $order->inventoryKeys()->first()->code
+        );
+    }
+
+    public function test_repeated_payment_of_paid_order_does_not_change_order_or_issue_second_key(): void
+    {
+        config([
+            'providers.default' => 'provider_a',
+            'providers.provider_a.mode' => 'success',
+            'providers.provider_a.delay_ms' => 0,
+        ]);
+
+        $product = Product::create([
+            'sku' => 'KEY-REPEAT-PAYMENT',
+            'name' => 'Repeat Payment Test',
+            'type' => 'key',
+            'price' => 1500,
+            'currency' => 'RUB',
+            'image' => null,
+        ]);
+
+        InventoryKey::create([
+            'product_id' => $product->id,
+            'code' => 'TEST-PAID-KEY',
+            'status' => 'available',
+        ]);
+
+        $order = app(OrderService::class)->create(
+            $product,
+            1,
+            'repeat-payment-test',
+        );
+
+        $payload = [
+            'event_id' => 'payment-repeat-001',
+            'order_id' => $order->public_id,
+            'status' => 'paid',
+            'amount' => $order->amount,
+            'currency' => $order->currency,
+            'created_at' => now()->toISOString(),
+        ];
+
+        $this->postJson('/api/webhooks/payment', $payload)
+            ->assertOk();
+
+        $order->refresh();
+
+        $this->assertSame(
+            'delivered',
+            $order->status->value
+        );
+
+        $this->assertSame(
+            1,
+            $order->inventoryKeys()->count()
+        );
+
+        $this->assertSame(
+            'issued',
+            $order->inventoryKeys()->first()->status
+        );
+
+        $this->postJson('/api/webhooks/payment', [
+            ...$payload,
+            'event_id' => 'payment-repeat-002',
+        ])->assertOk();
+
+        $order->refresh();
+
+        $this->assertSame(
+            'delivered',
+            $order->status->value
+        );
+
+        $this->assertSame(
+            1,
+            $order->inventoryKeys()->count()
+        );
+
+        $this->assertSame(
+            1,
+            InventoryKey::where('status', 'issued')->count()
+        );
+    }
+
+    public function test_payment_retry_after_lost_response_does_not_issue_second_key(): void
+    {
+        config([
+            'providers.default' => 'provider_a',
+            'providers.provider_a.mode' => 'success',
+            'providers.provider_a.delay_ms' => 0,
+        ]);
+
+        $product = Product::create([
+            'sku' => 'KEY-NETWORK-RETRY',
+            'name' => 'Network Retry Test',
+            'type' => 'key',
+            'price' => 1700,
+            'currency' => 'RUB',
+            'image' => null,
+        ]);
+
+        InventoryKey::create([
+            'product_id' => $product->id,
+            'code' => 'NETWORK-RETRY-KEY',
+            'status' => 'available',
+        ]);
+
+        $order = app(OrderService::class)->create(
+            $product,
+            1,
+            'network-retry-order',
+        );
+
+        $payload = [
+            'order_id' => $order->public_id,
+            'status' => 'paid',
+            'amount' => $order->amount,
+            'currency' => $order->currency,
+            'created_at' => now()->toISOString(),
+        ];
+
+        // Первый запрос — платёж успешно обработан.
+        $this->postJson('/api/webhooks/payment', [
+            ...$payload,
+            'event_id' => 'network-retry-001',
+        ])->assertOk();
+
+        $order->refresh();
+
+        $this->assertSame(
+            'delivered',
+            $order->status->value
+        );
+
+        $this->assertSame(
+            1,
+            InventoryKey::where('status', 'issued')->count()
+        );
+
+        // Клиент не получил ответ и повторяет запрос.
+        $this->postJson('/api/webhooks/payment', [
+            ...$payload,
+            'event_id' => 'network-retry-002',
+        ])->assertOk();
+
+        $order->refresh();
+
+        $this->assertSame(
+            'delivered',
+            $order->status->value
+        );
+
+        $this->assertSame(
+            1,
+            $order->inventoryKeys()->count()
+        );
+
+        $this->assertSame(
+            1,
+            InventoryKey::where('status', 'issued')->count()
         );
     }
 }

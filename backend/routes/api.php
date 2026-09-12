@@ -3,6 +3,7 @@
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\OrderDeliveryController;
 use App\Http\Controllers\PaymentWebhookController;
+use App\Http\Controllers\ProductController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -29,6 +30,11 @@ Route::get(
 );
 
 Route::post(
+    '/orders/{order}/refresh-price',
+    [OrderController::class, 'refreshPrice']
+);
+
+Route::post(
     '/orders/{order}/retry-delivery',
     [OrderDeliveryController::class, 'retry']
 );
@@ -41,4 +47,9 @@ Route::post(
 Route::get(
     '/admin/orders',
     [OrderController::class, 'adminIndex']
+);
+
+Route::get(
+    '/products',
+    [ProductController::class, 'index']
 );

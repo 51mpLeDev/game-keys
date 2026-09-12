@@ -12,6 +12,7 @@ export interface Product {
     oldPrice?: number
     currency: 'RUB'
     image: string
+    stock: number
 }
 
 export const products: Product[] = [

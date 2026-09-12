@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Enums\OrderStatus;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\PaymentEvent;
+use App\Models\Product;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use App\Jobs\DeliverOrderJob;
@@ -109,6 +111,44 @@ class PaymentWebhookService
             }
 
             if ($order->status !== OrderStatus::CREATED) {
+                return false;
+            }
+
+            $item = OrderItem::query()
+                ->where('order_id', $order->id)
+                ->first();
+
+            if (!$item) {
+                return false;
+            }
+
+            $product = Product::query()
+                ->whereKey($item->product_id)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$product) {
+                return false;
+            }
+
+            if (
+                $item->price !== $product->price ||
+                strtoupper($item->currency) !== strtoupper($product->currency)
+            ) {
+                return false;
+            }
+
+            $reservationExpiresAt = $order->reservation_expires_at;
+
+            if ($reservationExpiresAt === null || $reservationExpiresAt->isPast()) {
+                $order->update([
+                    'status' => OrderStatus::OUT_OF_STOCK,
+                ]);
+
+                $latestEvent->update([
+                    'processed_at' => $latestEvent->processed_at ?? now(),
+                ]);
+
                 return false;
             }
 

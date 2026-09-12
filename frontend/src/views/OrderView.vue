@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import {computed, onMounted, onUnmounted, ref} from 'vue'
 import {useRoute} from 'vue-router'
+import echo from '../echo'
 
 interface OrderItem {
+  product_id: number
   sku: string
   name: string
   price: number
@@ -23,6 +25,7 @@ interface Order {
   keys: OrderKey[]
   paid_at: string | null
   delivered_at: string | null
+  reservation: string | null
 }
 
 const route = useRoute()
@@ -32,6 +35,7 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 
 let pollingTimer: ReturnType<typeof setInterval> | null = null
+let reservationTimer: ReturnType<typeof setInterval> | null = null
 
 const statusText = computed(() => {
   switch (order.value?.status) {
@@ -112,6 +116,8 @@ async function loadOrder() {
 
     order.value = result.data
     error.value = null
+
+    updateReservationTimer()
   } catch (err) {
     console.error(err)
     error.value = 'Не удалось загрузить заказ'
@@ -120,29 +126,90 @@ async function loadOrder() {
   }
 }
 
-onMounted(async () => {
-  await loadOrder()
-
-  pollingTimer = setInterval(async () => {
-    if (isFinished.value) {
-      return
-    }
-
-    await loadOrder()
-  }, 2000)
-})
-
-onUnmounted(() => {
-  if (pollingTimer) {
-    clearInterval(pollingTimer)
-  }
-})
-
 const paying = ref(false)
 const retrying = ref(false)
 
+const priceChanged = ref(false)
+const latestPrice = ref<number | null>(null)
+const refreshingPrice = ref(false)
+
+function handlePriceUpdate(event: {
+  product_id: number
+  price: number
+  currency: string
+}) {
+  if (!order.value || order.value.status !== 'created') {
+    return
+  }
+
+  const item = order.value.items.find(
+      item => item.product_id === event.product_id
+  )
+
+  if (!item) {
+    return
+  }
+
+  if (item.price === event.price && item.currency === event.currency) {
+    return
+  }
+
+  latestPrice.value = event.price
+  priceChanged.value = true
+
+  console.log('[Order] price changed:', {
+    product_id: event.product_id,
+    sku: item.sku,
+    oldPrice: item.price,
+    newPrice: event.price,
+    currency: event.currency,
+  })
+}
+
+async function refreshPrice() {
+  if (!order.value || refreshingPrice.value) {
+    return
+  }
+
+  try {
+    refreshingPrice.value = true
+    error.value = null
+
+    const response = await fetch(
+        `http://localhost:8080/api/orders/${order.value.id}/refresh-price`,
+        {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+          },
+        },
+    )
+
+    const result = await response.json()
+
+    if (!response.ok) {
+      throw new Error(result.message || `HTTP ${response.status}`)
+    }
+
+    order.value = result.data
+    priceChanged.value = false
+    latestPrice.value = null
+
+    updateReservationTimer()
+  } catch (err) {
+    console.error(err)
+    error.value = 'Не удалось обновить цену'
+  } finally {
+    refreshingPrice.value = false
+  }
+}
+
 async function payOrder() {
-  if (!order.value || paying.value) {
+  if (
+      !order.value ||
+      paying.value ||
+      reservationExpired.value
+  ) {
     return
   }
 
@@ -155,7 +222,7 @@ async function payOrder() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Accept': 'application/json',
+            Accept: 'application/json',
           },
           body: JSON.stringify({
             event_id: `demo-payment-${order.value.id}`,
@@ -179,22 +246,66 @@ async function payOrder() {
   } finally {
     paying.value = false
   }
-
-  const originalAmount = computed(() => {
-    return order.value?.items.reduce(
-        (sum, item) => sum + item.price * item.quantity,
-        0,
-    ) ?? 0
-  })
-
-  const discount = computed(() => {
-    if (!order.value) {
-      return 0
-    }
-
-    return Math.max(0, originalAmount.value - order.value.amount)
-  })
 }
+
+const originalAmount = computed(() => {
+  return order.value?.items.reduce(
+      (sum, item) => sum + item.price * item.quantity,
+      0,
+  ) ?? 0
+})
+
+const discount = computed(() => {
+  if (!order.value) {
+    return 0
+  }
+
+  return Math.max(
+      0,
+      originalAmount.value - order.value.amount,
+  )
+})
+
+const reservationSecondsLeft = ref(0)
+
+function updateReservationTimer() {
+  if (
+      !order.value?.reservation ||
+      order.value.status !== 'created'
+  ) {
+    reservationSecondsLeft.value = 0
+    return
+  }
+
+  const expiresAt = new Date(order.value.reservation).getTime()
+  const now = Date.now()
+
+  reservationSecondsLeft.value = Math.max(
+      0,
+      Math.ceil((expiresAt - now) / 1000),
+  )
+}
+
+const reservationTimeText = computed(() => {
+  const minutes = Math.floor(
+      reservationSecondsLeft.value / 60,
+  )
+
+  const seconds = reservationSecondsLeft.value % 60
+
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+})
+
+const reservationExpired = computed(() => {
+  if (
+      !order.value?.reservation ||
+      order.value.status !== 'created'
+  ) {
+    return false
+  }
+
+  return reservationSecondsLeft.value <= 0
+})
 
 async function retryDelivery() {
   if (!order.value || retrying.value) {
@@ -228,6 +339,39 @@ async function retryDelivery() {
     retrying.value = false
   }
 }
+
+onMounted(async () => {
+  await loadOrder()
+
+  echo.channel('products')
+      .listen('.product.price.updated', handlePriceUpdate)
+
+  updateReservationTimer()
+
+  reservationTimer = setInterval(() => {
+    updateReservationTimer()
+  }, 1000)
+
+  pollingTimer = setInterval(async () => {
+    if (isFinished.value) {
+      return
+    }
+
+    await loadOrder()
+  }, 2000)
+})
+
+onUnmounted(() => {
+  if (pollingTimer) {
+    clearInterval(pollingTimer)
+  }
+
+  if (reservationTimer) {
+    clearInterval(reservationTimer)
+  }
+
+  echo.leaveChannel('products')
+})
 </script>
 
 <template>
@@ -278,8 +422,8 @@ async function retryDelivery() {
                 :key="step.title"
                 class="step"
                 :class="{
-                                'step--done': step.done,
-                            }"
+                  'step--done': step.done,
+                }"
             >
               <div class="step__icon">
                 {{ step.done ? '✓' : index + 1 }}
@@ -319,6 +463,7 @@ async function retryDelivery() {
           </div>
 
           <div class="total-details">
+
             <div class="total-details__row">
               <span>Стоимость товара</span>
 
@@ -333,16 +478,21 @@ async function retryDelivery() {
             >
               <span>Скидка</span>
 
-              <span> −{{ discount }} {{ order.currency }} </span>
+              <span>
+                −{{ discount }} {{ order.currency }}
+              </span>
             </div>
 
-            <div class="total-details__row total-details__row--total">
+            <div
+                class="total-details__row total-details__row--total"
+            >
               <span>Итого</span>
 
               <strong>
                 {{ order.amount }} {{ order.currency }}
               </strong>
             </div>
+
           </div>
 
         </section>
@@ -357,13 +507,63 @@ async function retryDelivery() {
             После оплаты товар будет выдан автоматически.
           </p>
 
+          <div
+              v-if="order.reservation && !reservationExpired"
+              class="reservation-timer"
+          >
+            <span>
+              Резерв товара действует
+            </span>
+
+            <strong>
+              {{ reservationTimeText }}
+            </strong>
+          </div>
+
+          <div
+              v-else-if="order.reservation && reservationExpired"
+              class="reservation-expired"
+          >
+            Резерв товара истёк. Заказ больше нельзя оплатить.
+          </div>
+
+          <div
+              v-if="priceChanged"
+              class="price-changed"
+          >
+            <strong>Цена товара изменилась</strong>
+
+            <p>
+              Текущая цена:
+              <strong>{{ latestPrice }} {{ order.currency }}</strong>.
+              Обновите заказ перед оплатой.
+            </p>
+
+            <button
+                class="refresh-price-button"
+                type="button"
+                :disabled="refreshingPrice || reservationExpired"
+                @click="refreshPrice"
+            >
+              {{ refreshingPrice ? 'Обновляем...' : 'Обновить цену' }}
+            </button>
+          </div>
+
           <button
               class="action-button"
               type="button"
-              :disabled="paying"
+              :disabled="paying || refreshingPrice || reservationExpired || priceChanged"
               @click="payOrder"
           >
-            {{ paying ? 'Оплата...' : `Оплатить ${order.amount} ${order.currency}` }}
+            {{
+              paying
+                  ? 'Оплата...'
+                  : reservationExpired
+                      ? 'Резерв истёк'
+                      : priceChanged
+                          ? 'Сначала обновите цену'
+                          : `Оплатить ${order.amount} ${order.currency}`
+            }}
           </button>
         </section>
 
@@ -372,6 +572,7 @@ async function retryDelivery() {
             class="card key-card"
         >
           <div class="key-card__header">
+
             <div>
               <h2>Ваш ключ</h2>
 
@@ -382,8 +583,9 @@ async function retryDelivery() {
             </div>
 
             <span class="key-card__check">
-                            ✓
-                        </span>
+              ✓
+            </span>
+
           </div>
 
           <div
@@ -420,7 +622,11 @@ async function retryDelivery() {
               :disabled="retrying"
               @click="retryDelivery"
           >
-            {{ retrying ? 'Повторяем...' : 'Повторить выдачу' }}
+            {{
+              retrying
+                  ? 'Повторяем...'
+                  : 'Повторить выдачу'
+            }}
           </button>
         </section>
 
@@ -723,9 +929,7 @@ async function retryDelivery() {
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-
   padding: 5px 0;
-
   color: #777;
   font-size: 14px;
 }
@@ -737,11 +941,65 @@ async function retryDelivery() {
 .total-details__row--total {
   margin-top: 8px;
   padding-top: 12px;
-
   color: #111;
-
   border-top: 1px solid #eee;
-
   font-size: 18px;
+}
+
+.reservation-timer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: #f5f5f5;
+}
+
+.reservation-timer span {
+  color: #777;
+  font-size: 14px;
+}
+
+.reservation-timer strong {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.reservation-expired {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: #fff0f0;
+  color: #b42318;
+  font-size: 14px;
+}
+
+.price-changed {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: 10px;
+  background: #fff4d6;
+}
+
+.price-changed p {
+  margin: 8px 0 14px;
+  color: #666;
+  font-size: 14px;
+}
+
+.refresh-price-button {
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: #111;
+  color: #fff;
+  cursor: pointer;
+}
+
+.refresh-price-button:disabled {
+  opacity: .5;
+  cursor: default;
 }
 </style>

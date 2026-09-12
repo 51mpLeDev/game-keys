@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import {ref} from 'vue'
+import {computed, onMounted, onUnmounted, ref} from 'vue'
+import echo from '../echo'
 import ProductCard from './ProductCard.vue'
 
 import {
@@ -25,8 +26,78 @@ const promoCode = ref('')
 const promoError = ref('')
 const buyingSku = ref<string | null>(null)
 
+type ServerProduct = {
+  id: number
+  sku: string
+  price: number
+  currency: 'RUB'
+  stock: number
+}
+
+const serverProducts = ref<Record<string, ServerProduct>>({})
+
+async function loadProducts() {
+  const response = await fetch(`${API_URL}/products`)
+
+  if (!response.ok) {
+    throw new Error('Failed to load products')
+  }
+
+  const result = await response.json()
+
+  serverProducts.value = Object.fromEntries(
+      result.data.map((product: ServerProduct) => [
+        product.sku,
+        product,
+      ])
+  )
+}
+
+function handleStockUpdate(event: {
+  product_id: number
+  stock: number
+}) {
+  const product = Object.values(serverProducts.value)
+      .find(item => item.id === event.product_id)
+
+  if (!product) {
+    return
+  }
+
+  product.stock = event.stock
+
+  console.log('[Stock] updated:', {
+    sku: product.sku,
+    stock: event.stock,
+  })
+}
+
+function productWithServerState(product: Product): Product & {
+  stock: number
+} {
+  const server = serverProducts.value[product.sku]
+
+  return {
+    ...product,
+    price: server?.price ?? product.price,
+    currency: server?.currency ?? product.currency,
+    stock: server?.stock ?? 0,
+  }
+}
+
+const popularProductsWithState = computed(() =>
+    popularProducts.map(productWithServerState)
+)
+
+const recommendedProductsWithState = computed(() =>
+    recommendedProducts.map(productWithServerState)
+)
+
+const otherProductsWithState = computed(() =>
+    otherProducts.map(productWithServerState)
+)
+
 async function handleBuy(product: Product) {
-  // Защита от повторного клика по той же карточке.
   if (buyingSku.value === product.sku) {
     return
   }
@@ -34,9 +105,6 @@ async function handleBuy(product: Product) {
   buyingSku.value = product.sku
   promoError.value = ''
 
-  // Один order_id на одну попытку покупки.
-  // Если запрос будет повторён с этим ID,
-  // backend вернёт тот же заказ.
   const orderId = crypto.randomUUID()
 
   try {
@@ -74,6 +142,41 @@ async function handleBuy(product: Product) {
     buyingSku.value = null
   }
 }
+
+function handlePriceUpdate(event: {
+  product_id: number
+  price: number
+  currency: 'RUB'
+}) {
+  const product = Object.values(serverProducts.value)
+      .find(item => item.id === event.product_id)
+
+  if (!product) return
+
+  product.price = event.price
+  product.currency = event.currency
+
+  console.log('[Price] updated:', {
+    sku: product.sku,
+    price: product.price,
+    currency: product.currency,
+  })
+}
+
+onMounted(() => {
+  loadProducts().catch(error => {
+    console.error('Failed to load products:', error)
+  })
+
+  echo
+      .channel('products')
+      .listen('.product.stock.updated', handleStockUpdate)
+      .listen('.product.price.updated', handlePriceUpdate)
+})
+
+onUnmounted(() => {
+  echo.leaveChannel('products')
+})
 </script>
 
 <template>
@@ -144,7 +247,7 @@ async function handleBuy(product: Product) {
 
       <div class="products__grid">
         <ProductCard
-            v-for="product in popularProducts"
+            v-for="product in popularProductsWithState"
             :key="product.sku"
             :product="product"
             @buy="handleBuy"
@@ -169,7 +272,7 @@ async function handleBuy(product: Product) {
 
       <div class="products__grid">
         <ProductCard
-            v-for="product in recommendedProducts"
+            v-for="product in recommendedProductsWithState"
             :key="product.sku"
             :product="product"
             @buy="handleBuy"
@@ -194,7 +297,7 @@ async function handleBuy(product: Product) {
 
       <div class="products__grid">
         <ProductCard
-            v-for="product in otherProducts"
+            v-for="product in otherProductsWithState"
             :key="product.sku"
             :product="product"
             @buy="handleBuy"

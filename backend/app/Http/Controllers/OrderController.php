@@ -7,6 +7,7 @@ use App\Exceptions\OutOfStockException;
 use App\Http\Requests\StoreOrderRequest;
 use App\Models\Order;
 use App\Models\Product;
+use App\Services\OrderPriceService;
 use App\Services\OrderService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -66,6 +67,7 @@ class OrderController extends Controller
 
             'items' => $order->items->map(
                 fn ($item) => [
+                    'product_id' => $item->product_id,
                     'sku' => $item->sku,
                     'name' => $item->name,
                     'price' => $item->price,
@@ -87,6 +89,28 @@ class OrderController extends Controller
                 ->first(fn ($key) => $key->status === 'reserved')
                 ?->reserved_until?->toISOString(),
         ];
+    }
+
+    public function refreshPrice(
+        string $order,
+        OrderPriceService $service,
+    ): JsonResponse {
+        $order = Order::query()
+            ->where('public_id', $order)
+            ->firstOrFail();
+
+        try {
+            $order = $service->refresh($order);
+        } catch (\RuntimeException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'code' => 'price_refresh_failed',
+            ], 409);
+        }
+
+        return response()->json([
+            'data' => $this->transform($order),
+        ]);
     }
 
     public function adminIndex(Request $request): JsonResponse
