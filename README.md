@@ -1,685 +1,529 @@
-# Game Keys Marketplace
+# Game Keys
 
-Тестовое задание — marketplace цифровых товаров.
+Тестовый fullstack-проект цифрового магазина игровых товаров.
+
+Проект сфокусирован не на построении полноценного production marketplace, а на демонстрации подхода к разработке: работа с конкурентными запросами, резервированием товара, идемпотентностью, realtime-обновлениями, оплатой и выдачей цифрового товара.
 
 ## Стек
 
-- Laravel
+### Backend
+
+- PHP 8.4
+- Laravel 13
+- MySQL
+- Laravel Queue
+- Laravel Reverb
+- Nginx
+- Docker
+
+### Frontend
+
 - Vue 3
 - TypeScript
-- MySQL
+- Vite
+- Laravel Echo
+- Pusher JS
+
+## Запуск проекта
+
+Требования:
+
 - Docker
-- Nginx
-- PHP 8.4
-- Node.js 22
+- Docker Compose
+- Make
 
-## Быстрый запуск
+Создать .env файлы:
 
-Клонировать репозиторий:
+    make env
 
-```bash
-git clone https://github.com/51mpLeDev/game-keys.git
-cd game-keys
-```
+Установить зависимости:
 
-Собрать и запустить контейнеры:
+    make install
 
-```bash
-make build
-make up
-```
+Собрать Docker-контейнеры:
 
-```bash
-make install
-```
+    make build
 
-Запустить миграции и сидеры:
-```bash
-  make fresh
-```
+Запустить проект:
 
-Запустить queue worker:
+    make up
 
-```bash
-make queue
-```
+Создать базу, выполнить миграции и загрузить тестовые данные:
 
-Frontend:
+    make fresh
 
-http://localhost:5173
+После запуска:
 
-Backend API:
+- Frontend: http://localhost:3000
+- API: http://localhost:8080/api
+- Reverb WebSocket: ws://localhost:8081
 
-http://localhost:8080
+## Makefile
 
-Admin:
+Основные команды:
 
-http://localhost:5173/admin/orders
+    make build
+    make up
+    make down
+    make restart
+    make logs
+    make ps
 
-## Make commands
+Laravel:
 
-### Запуск проекта
+    make shell
+    make migrate
+    make fresh
+    make seed
+    make queue
+    make artisan route:list
+    make artisan schedule:list
 
-```bash
-make up
-```
+Тесты:
 
-Запускает Docker-контейнеры.
+    make test
+    make test-race
 
-### Остановка проекта
+## Основной сценарий покупки
 
-```bash
-make down
-```
+Покупка цифрового товара проходит через следующий процесс:
 
-### Просмотр состояния контейнеров
+    Каталог
+       ↓
+    Создание заказа
+       ↓
+    Резервирование конкретного ключа
+       ↓
+    5 минут на оплату
+       ↓
+    Оплата
+       ↓
+    Payment Webhook
+       ↓
+    Проверка заказа и резерва
+       ↓
+    Выдача ключа
+       ↓
+    Заказ доставлен
 
-```bash
-make ps
-```
+Резервирование происходит при создании заказа.
 
-### Просмотр логов
+Это позволяет не допустить ситуацию, когда один и тот же цифровой товар одновременно продаётся нескольким покупателям.
 
-```bash
-make logs
-```
+## Резервирование товара
 
-### Queue worker
+При создании заказа backend выбирает конкретный доступный ключ.
 
-```bash
-make queue
-```
+Ключ блокируется внутри транзакции и переводится:
 
-Queue worker необходимо запустить отдельно после запуска контейнеров.
+    available → reserved
 
-Для production-like сценария queue worker должен работать постоянно.
+Для него устанавливается срок:
 
-### Тесты
+    reserved_until
 
-Обычные тесты:
+Продолжительность резерва:
 
-```bash
-make test
-```
+    5 минут
 
-Concurrency tests:
+В заказе также сохраняется:
 
-```bash
-make test-race
-```
+    reservation_expires_at
 
-### Полный сценарий
+Frontend использует это значение для отображения countdown.
 
-Для проверки проекта с нуля:
-
-```bash
-make build
-make up
-make queue
-make test
-make test-race
-```
+После окончания срока резерва ключ освобождается:
 
-## Основной функционал
+    reserved → available
 
-Реализовано:
+Освобождение просроченных резервов выполняется командой:
 
-- каталог цифровых товаров;
-- создание заказа;
-- idempotency для создания заказа;
-- mock payment webhook;
-- автоматическая выдача ключей;
-- защита inventory от двойной выдачи;
-- страница заказа;
-- отслеживание статуса заказа;
-- повторная выдача товара;
-- обработка отсутствия товара;
-- mock delivery providers;
-- retry после ошибок provider;
-- promo codes;
-- защита лимита использования промокодов при concurrency;
-- admin interface для просмотра заказов.
+    php artisan inventory:release-expired
 
-## Stage 1
+Laravel Scheduler запускает эту команду каждую минуту.
 
-Основной сценарий:
-
-```text
-Выбор товара
-    ↓
-Создание заказа
-    ↓
-Оплата
-    ↓
-Payment webhook
-    ↓
-Резервирование ключа
-    ↓
-Delivery provider
-    ↓
-Выдача ключа
-    ↓
-delivered
-```
-
-После успешной оплаты доступный ключ автоматически резервируется и выдаётся заказу.
-
-Один inventory key не может быть выдан двум заказам.
-
-## Stage 2 — Exactly Once / Concurrency
-
-Критические операции защищены комбинацией:
-
-- database transactions;
-- `SELECT ... FOR UPDATE`;
-- unique constraints;
-- idempotency keys;
-- проверок текущего состояния заказа.
-
-### Создание заказа
+## Realtime
 
-Frontend генерирует `order_id` до отправки запроса.
-
-Повторный запрос с тем же `order_id` возвращает уже существующий заказ вместо создания нового.
+Для realtime-обновлений используется Laravel Reverb.
 
-Это защищает от:
+Frontend подключается к публичному каналу:
 
-```text
-double click
-network retry
-duplicate request
-```
+    products
 
-### Payment webhook
+Используются события:
 
-Endpoint:
+    product.stock.updated
+    product.price.updated
 
-```text
-POST /api/webhooks/payment
-```
+### Изменение остатка
 
-Payload:
+Когда количество доступных ключей изменяется, backend отправляет новое значение остатка.
 
-```json
-{
-    "event_id": "payment-event-001",
-    "order_id": "order-uuid",
-    "status": "paid",
-    "amount": 1290,
-    "currency": "RUB",
-    "created_at": "2026-09-06T10:00:00Z"
-}
-```
+Все открытые вкладки получают изменение без перезагрузки страницы.
 
-Webhook считается at-least-once.
+Если остаток становится равным 0, кнопка покупки отключается во всех открытых вкладках.
 
-`event_id` используется как idempotency key.
+### Изменение цены
 
-В базе есть unique constraint на `payment_events.event_id`.
+При изменении цены backend отправляет новое значение во все открытые вкладки.
 
-Поэтому повторная доставка одного события не приводит к повторной обработке.
+Таким образом, пользователь сразу видит актуальную цену товара.
 
-Также поддерживается ситуация, когда webhook приходит раньше завершения создания заказа.
+Realtime-события отправляются после успешного commit транзакции.
 
-Событие сохраняется и обрабатывается после появления заказа.
+## Обновление цены перед оплатой
 
-### Inventory
+Цена товара может измениться после создания заказа.
 
-При выдаче ключ блокируется внутри транзакции.
+Перед оплатой frontend может запросить актуальную цену:
 
-Упрощённая схема:
+    POST /api/orders/{order}/refresh-price
 
-```text
-BEGIN
-    ↓
-LOCK order
-    ↓
-CHECK current state
-    ↓
-LOCK inventory key
-    ↓
-RESERVE key
-    ↓
-UPDATE order
-    ↓
-COMMIT
-```
+Backend:
 
-После получения результата provider:
+1. блокирует заказ;
+2. получает актуальный товар;
+3. обновляет цену позиции;
+4. пересчитывает сумму заказа;
+5. сохраняет новую сумму.
 
-```text
-BEGIN
-    ↓
-LOCK issuance
-    ↓
-LOCK inventory key
-    ↓
-MARK key as issued
-    ↓
-MARK issuance as issued
-    ↓
-MARK order as delivered
-    ↓
-COMMIT
-```
+Если цена изменилась, пользователь видит новую стоимость до оплаты.
 
-Дополнительные unique constraints в базе являются последним уровнем защиты от race conditions.
+## Last Unit Race
 
-## Race tests
+Один из ключевых конкурентных сценариев:
 
-Запуск:
+    Остался 1 ключ
 
-```bash
-make test-race
-```
+    Покупатель A ──┐
+                   ├── одновременно
+    Покупатель B ──┘
 
-Тесты выполняют реальные конкурентные HTTP-запросы к приложению.
+Резервирование выполняется внутри транзакции с блокировкой строки.
 
-Проверяются:
+В результате только один покупатель получает ключ:
 
-- 50 одновременных запросов создания заказа;
-- 50 одновременных payment webhook для одного заказа;
-- 50 одновременных запросов с одним promo code.
+    Покупатель A → резерв получен
+    Покупатель B → out_of_stock
 
-### Order creation race
+Второй покупатель не может получить тот же ключ.
 
-50 одновременных запросов с одним `order_id` должны создать только один заказ.
+Для проверки используется:
 
-### Payment webhook race
+    LastUnitRaceTest
 
-50 одновременных webhook для одного заказа должны привести только к одной выдаче ключа.
+## Идемпотентность создания заказа
 
-### Promo race
+При создании заказа клиент передаёт order_id.
 
-50 одновременных заказов используют один промокод с ограниченным количеством применений.
+Backend сохраняет его как public_id.
 
-Количество успешных применений не может превышать `max_uses`.
+Если один и тот же запрос повторяется из-за:
 
-## Stage 3 — Delivery Recovery
+- двойного клика;
+- refresh;
+- повторной отправки запроса;
+- временного обрыва сети;
 
-Для выдачи используются mock providers:
+второй заказ не создаётся.
 
-```text
-provider_a
-provider_b
-```
+Backend возвращает уже существующий заказ.
 
-Provider поддерживает сценарии:
+## Идемпотентность оплаты
 
-- success;
-- error;
-- timeout;
-- timeout_once;
-- configurable delay.
+Payment webhook содержит event_id.
 
-### Provider idempotency
+Обработанные события сохраняются.
 
-Каждый запрос к provider получает:
-
-```text
-request_id
-```
+Повторная доставка одного и того же webhook не приводит к повторной обработке оплаты или повторной выдаче товара.
 
 Например:
 
-```text
-order-123-item-456
-```
+    Webhook #123
+        ↓
+    Оплата
+        ↓
+    Выдача ключа
 
-Если provider уже выдал ключ для этого `request_id`, повторный запрос возвращает тот же результат.
+    Webhook #123 повторно
+        ↓
+    Ничего не происходит
 
-Это защищает от ситуации:
+Повторная попытка оплатить уже оплаченный заказ также не создаёт повторную выдачу.
 
-```text
-request
-    ↓
-provider issued key
-    ↓
-network timeout
-    ↓
-retry
-    ↓
-same request_id
-    ↓
-same key
-```
+## Конкурентные webhook
 
-Таким образом, timeout не приводит к повторной выдаче.
+Несколько webhook одного заказа могут прийти одновременно.
 
-### Out of stock
+Обработка выполняется внутри транзакции с блокировкой заказа.
 
-Если оплата прошла, но свободного ключа нет:
+Это гарантирует, что конкурентные запросы не приведут к нескольким выдачам одного и того же товара.
 
-```text
-paid
- ↓
-out_of_stock
-```
+Проверяется тестом:
 
-Заказ сохраняется.
+    PaymentWebhookConcurrencyTest
 
-После пополнения inventory можно выполнить повторную выдачу:
+## Delivery Recovery
 
-```text
-out_of_stock
- ↓
-retry
- ↓
-delivering
- ↓
-delivered
-```
+Выдача цифрового товара выполняется через Laravel Queue.
 
-Retry является idempotent.
+Provider вынесен отдельно от основной логики заказа.
 
-## Stage 4 — Promo Codes
+Это позволяет заменить внешний сервис выдачи без изменения основного процесса покупки.
 
-Промокод передаётся серверу:
+Обрабатываются сценарии:
 
-```json
-{
-    "promo_code": "PROMO10"
-}
-```
+- ошибка provider;
+- повторная попытка;
+- потеря ответа;
+- повторный webhook;
+- временная недоступность provider.
 
-Размер скидки рассчитывает backend.
+Операция выдачи является идемпотентной.
 
-Frontend не является источником истины для цены.
+## Промокоды
 
-Для защиты `max_uses` строка промокода блокируется:
+Поддерживаются промокоды с ограничением количества использований.
 
-```sql
-SELECT ... FOR UPDATE
-```
+Использование промокода происходит внутри транзакции.
 
-Использование промокода также имеет unique constraint:
+При конкурентных запросах лимит использования не должен быть превышен.
 
-```text
-(promo_code_id, order_id)
-```
+Проверяется отдельным тестом:
 
-Поэтому один заказ не может применить один промокод несколько раз.
+    PromoCodeConcurrencyTest
 
-При конкурентных запросах количество использований не превышает `max_uses`.
+## Поиск и фильтрация
 
-## Order statuses
+Каталог поддерживает:
 
-Используются следующие статусы:
+- поиск по названию;
+- поиск по SKU;
+- фильтрацию по категории;
+- минимальную цену;
+- максимальную цену.
 
-```text
-created
-paid
-delivering
-delivered
-payment_failed
-out_of_stock
-delivery_failed
-```
-
-## Admin
-
-Admin interface:
-
-http://localhost:5173/admin/orders
-
-В демо-версии authentication для admin interface не реализована.
-
-Admin позволяет:
-
-- просматривать заказы;
-- фильтровать заказы;
-- видеть `out_of_stock`;
-- видеть `delivery_failed`;
-- запускать повторную выдачу товара.
-
-## Demo сценарий
-
-### 1. Создать заказ
-
-Открыть:
-
-http://localhost:5173
-
-Выбрать товар и нажать `Купить`.
-
-### 2. Применить промокод
-
-Ввести:
-
-```text
-PROMO10
-```
-
-Промокод передаётся на backend.
-
-Сервер самостоятельно рассчитывает итоговую стоимость.
-
-### 3. Оплатить
-
-На странице заказа нажать:
-
-```text
-Оплатить
-```
-
-Используется mock payment webhook.
-
-### 4. Получить ключ
-
-После успешной оплаты система автоматически резервирует доступный ключ и выдаёт его пользователю.
-
-### 5. Проверить out of stock
-
-Для товара без доступных ключей заказ после оплаты перейдёт в:
-
-```text
-out_of_stock
-```
-
-После добавления ключа в inventory можно выполнить retry delivery через admin interface.
-
-## API
-
-### Create order
-
-```text
-POST /api/orders
-```
+Фильтры сохраняются в URL.
 
 Пример:
 
-```json
-{
-    "sku": "KEY-CS2-PRIME",
-    "quantity": 1,
-    "order_id": "uuid",
-    "promo_code": "PROMO10"
-}
-```
+    /products?search=cs2&type=key
 
-### Get order
+После обновления страницы параметры фильтра сохраняются.
 
-```text
-GET /api/orders/{id}
-```
+При изменении фильтров предыдущий HTTP-запрос отменяется.
 
-### Payment webhook
+Дополнительно используется идентификатор запроса, поэтому устаревший ответ не может перезаписать более свежий результат.
 
-```text
-POST /api/webhooks/payment
-```
+## API
 
-### Retry delivery
+### Получение товаров
 
-```text
-POST /api/orders/{id}/retry-delivery
-```
+    GET /api/products
 
-### Admin orders
+Параметры:
 
-```text
-GET /api/admin/orders
-```
+    search
+    type
+    min_price
+    max_price
 
-## Architecture
+Пример:
 
-Упрощённая структура:
+    GET /api/products?search=cs2&type=key
 
-```text
-Vue 3
-  │
-  ▼
-Laravel API
-  │
-  ├── OrderService
-  │
-  ├── PaymentWebhookService
-  │
-  ├── OrderDeliveryService
-  │
-  ├── DeliveryProviderService
-  │
-  └── PromoCodeService
-          │
-          ▼
-        MySQL
-```
+### Создание заказа
 
-Основная бизнес-логика находится в сервисах.
+    POST /api/orders
 
-HTTP controllers отвечают за валидацию и API response.
+Пример:
 
-Критические операции выполняются внутри database transactions.
+    {
+        "sku": "KEY-CS2-PRIME",
+        "quantity": 1,
+        "order_id": "uuid",
+        "promo_code": "SALE10"
+    }
+
+### Получение заказа
+
+    GET /api/orders/{order}
+
+### Обновление цены заказа
+
+    POST /api/orders/{order}/refresh-price
+
+### Payment Webhook
+
+    POST /api/payment/webhook
+
+## Статусы заказа
+
+    created
+    paid
+    delivering
+    delivered
+    payment_failed
+    out_of_stock
+    delivery_failed
+
+Успешный сценарий:
+
+    created
+       ↓
+    paid
+       ↓
+    delivering
+       ↓
+    delivered
+
+## Архитектура
+
+Основная структура backend:
+
+    Controller
+        ↓
+    Service
+        ↓
+    Model
+        ↓
+    Database
+
+Ключевые сервисы:
+
+    OrderService
+    ReservationService
+    OrderPriceService
+    PaymentWebhookService
+
+Критические операции выполняются на backend.
+
+Frontend не является источником истины для:
+
+- наличия товара;
+- цены;
+- оплаты;
+- выдачи ключа;
+- состояния заказа.
+
+## Realtime архитектура
+
+    Laravel
+       │
+       ├── ProductStockUpdated
+       └── ProductPriceUpdated
+                │
+                ↓
+             Reverb
+                │
+                ↓
+           Laravel Echo
+                │
+                ↓
+           Vue frontend
+
+## Scheduler
+
+Scheduler используется для освобождения просроченных резервов.
+
+Команда:
+
+    php artisan inventory:release-expired
+
+Запускается каждую минуту.
+
+В Docker для scheduler используется отдельный контейнер.
 
 ## Queue
 
-Для фоновой обработки используется Laravel queue.
+Для обработки выдачи используется Laravel Queue.
 
-Queue worker запускается отдельно:
+Worker можно запустить:
 
-```bash
-make queue
-```
+    make queue
 
-В отдельном терминале рекомендуется оставить worker запущенным:
+## Структура проекта
 
-```text
-Terminal 1:
-make up
+    game-keys/
+    ├── backend/
+    │   ├── app/
+    │   │   ├── Console/
+    │   │   ├── Events/
+    │   │   ├── Exceptions/
+    │   │   ├── Http/
+    │   │   ├── Jobs/
+    │   │   ├── Models/
+    │   │   ├── Observers/
+    │   │   └── Services/
+    │   ├── database/
+    │   │   ├── factories/
+    │   │   ├── migrations/
+    │   │   └── seeders/
+    │   └── tests/
+    │       ├── Feature/
+    │       └── Unit/
+    │
+    ├── frontend/
+    │   └── src/
+    │       ├── components/
+    │       ├── data/
+    │       ├── pages/
+    │       └── echo.ts
+    │
+    ├── docker/
+    ├── docker-compose.yml
+    ├── docker-compose.test.yml
+    ├── Makefile
+    └── README.md
 
-Terminal 2:
-make queue
-```
-
-После этого приложение готово к работе.
-
-## Project structure
-
-```text
-game-keys/
-├── backend/
-│   ├── app/
-│   │   ├── Enums/
-│   │   ├── Exceptions/
-│   │   ├── Http/
-│   │   ├── Models/
-│   │   └── Services/
-│   ├── database/
-│   │   ├── migrations/
-│   │   └── seeders/
-│   ├── routes/
-│   └── tests/
-│
-├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   ├── data/
-│   │   ├── router/
-│   │   └── views/
-│   └── ...
-│
-├── docker/
-│   ├── nginx/
-│   └── php/
-│
-├── docker-compose.yml
-├── docker-compose.test.yml
-├── Makefile
-└── README.md
-```
-
-## Tests
+## Тестирование
 
 Обычные тесты:
 
-```bash
-make test
-```
+    make test
 
-Concurrency tests:
+Конкурентные тесты:
 
-```bash
-make test-race
-```
+    make test-race
 
-Проверяются:
+Concurrency-тесты проверяют:
 
-- создание заказа;
-- idempotency заказа;
-- payment webhook;
-- duplicate webhook;
-- concurrent webhook;
-- inventory locking;
-- delivery;
-- provider errors;
-- provider timeout;
-- delivery recovery;
-- promo codes;
-- promo max uses;
-- concurrent promo usage.
+- конкурентное создание заказа;
+- покупку последнего ключа;
+- конкурентные webhook;
+- идемпотентность платежа;
+- ограничения промокодов.
+
+Все текущие backend-тесты и concurrency-тесты проходят.
+
+Frontend успешно собирается во время Docker build.
+
+Отдельная команда frontend-build в Makefile не используется.
 
 ## Что не реализовано
 
-В рамках тестового задания намеренно не реализованы:
+Проект является тестовым заданием, а не полноценным production marketplace.
+
+Не реализованы:
 
 - реальная платёжная система;
-- реальный delivery provider;
-- production authentication для admin;
-- полноценная пользовательская система;
-- production monitoring.
+- реальный внешний provider цифровых товаров;
+- регистрация пользователей;
+- личный кабинет;
+- полноценная корзина;
+- полноценная production-админка;
+- production monitoring;
+- CI/CD;
+- production deployment.
 
-Вместо внешних сервисов используются mock-реализации.
+Платёжный provider и выдача товара используются в тестовом режиме.
 
-## Основной архитектурный принцип
+## Архитектурный принцип
 
-Для критических операций используется принцип:
+Главный принцип проекта:
 
-> Проверка состояния и изменение состояния должны происходить атомарно.
+> Сначала корректность данных и конкурентная безопасность, затем UI.
 
-То есть недостаточно сделать:
+Поэтому критические операции выполняются на backend и защищаются транзакциями, блокировками и идемпотентностью.
 
-```text
-check
- ↓
-update
-```
-
-отдельными запросами.
-
-Вместо этого используется:
-
-```text
-BEGIN
- ↓
-LOCK
- ↓
-CHECK
- ↓
-UPDATE
- ↓
-COMMIT
-```
-
-А database unique constraints используются как дополнительная гарантия целостности данных.
-
-Это позволяет безопасно обрабатывать повторные запросы и конкурентные операции.
+Frontend отвечает за отображение состояния и взаимодействие с пользователем, но не может самостоятельно определить, был ли товар действительно зарезервирован, оплачен или выдан.
