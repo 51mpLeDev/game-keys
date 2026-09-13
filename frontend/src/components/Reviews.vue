@@ -46,6 +46,28 @@ const reviews: Review[] = [
     productPrice: 139,
   },
 ]
+
+const images = import.meta.glob(
+    '../assets/**/*.{png,jpg,jpeg,webp}',
+    {
+      eager: true,
+      query: '?url',
+      import: 'default',
+    }
+)
+
+function img(name?: string | null) {
+  const defaultImage = '../assets/img.png'
+
+  if (!name) {
+    return images[defaultImage] as string
+  }
+
+  const path = `../${name}`
+  const image = images[path] as string | undefined
+
+  return image ?? images[defaultImage] as string
+}
 </script>
 
 <template>
@@ -79,7 +101,7 @@ const reviews: Review[] = [
         <div class="review-card__user">
           <img
               class="review-card__avatar"
-              :src="`/src/${review.avatar}`"
+              :src="img(review.avatar)"
               :alt="review.name"
           />
 
@@ -108,7 +130,7 @@ const reviews: Review[] = [
         <div class="review-card__product">
           <img
               class="review-card__product-image"
-              :src="`/src/${review.productImage}`"
+              :src="img(review.productImage)"
               alt=""
           />
 
