@@ -24,6 +24,7 @@ export const products: Product[] = [
         oldPrice: 1990,
         currency: 'RUB',
         image: 'assets/img.png',
+        stock: 1,
     },
     {
         sku: 'KEY-DOOM-2016',
@@ -33,6 +34,7 @@ export const products: Product[] = [
         oldPrice: 1990,
         currency: 'RUB',
         image: 'assets/img.png',
+        stock: 1,
     },
     {
         sku: 'KEY-GTA5',
@@ -42,6 +44,7 @@ export const products: Product[] = [
         oldPrice: 2490,
         currency: 'RUB',
         image: 'assets/img.png',
+        stock: 1,
     },
     {
         sku: 'SUB-DISCORD-1M',
@@ -51,6 +54,7 @@ export const products: Product[] = [
         oldPrice: 599,
         currency: 'RUB',
         image: 'assets/img.png',
+        stock: 1,
     },
     {
         sku: 'SUB-SPOTIFY-1M',
@@ -60,6 +64,7 @@ export const products: Product[] = [
         oldPrice: 499,
         currency: 'RUB',
         image: 'assets/img.png',
+        stock: 1,
     },
 ]
 

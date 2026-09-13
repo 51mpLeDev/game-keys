@@ -376,6 +376,11 @@ onUnmounted(() => {
 
   echo.leaveChannel('products')
 })
+
+function copyKey(code: string) {
+    window.navigator.clipboard.writeText(code)
+}
+
 </script>
 
 <template>
@@ -606,7 +611,7 @@ onUnmounted(() => {
 
             <button
                 type="button"
-                @click="navigator.clipboard.writeText(key.code)"
+                @click="copyKey(key.code)"
             >
               Копировать
             </button>
