@@ -29,6 +29,8 @@ interface Order {
   reservation_expires_at: string | null
 }
 
+const API_URL = import.meta.env.VITE_API_URL
+
 const route = useRoute()
 
 const order = ref<Order | null>(null)
@@ -101,7 +103,7 @@ const steps = computed(() => [
 async function loadOrder() {
   try {
     const response = await fetch(
-        `http://localhost:8080/api/orders/${route.params.id}`,
+        `${API_URL}/orders/${route.params.id}`,
         {
           headers: {
             Accept: 'application/json',
@@ -177,7 +179,7 @@ async function refreshPrice() {
     error.value = null
 
     const response = await fetch(
-        `http://localhost:8080/api/orders/${order.value.id}/refresh-price`,
+        `${API_URL}/orders/${order.value.id}/refresh-price`,
         {
           method: 'POST',
           headers: {
@@ -218,7 +220,7 @@ async function payOrder() {
     paying.value = true
 
     const response = await fetch(
-        'http://localhost:8080/api/webhooks/payment',
+        '${API_URL}/webhooks/payment',
         {
           method: 'POST',
           headers: {
@@ -320,7 +322,7 @@ async function retryDelivery() {
     retrying.value = true
 
     const response = await fetch(
-        `http://localhost:8080/api/orders/${order.value.id}/retry-delivery`,
+        `${API_URL}/orders/${order.value.id}/retry-delivery`,
         {
           method: 'POST',
           headers: {
