@@ -1,43 +1,126 @@
 <script setup lang="ts">
-import {computed, onMounted, onUnmounted, ref} from 'vue'
+import {computed, onMounted, onUnmounted, ref, watch} from 'vue'
 import echo from '../echo'
 import ProductCard from './ProductCard.vue'
 
-import {
-  popularProducts,
-  recommendedProducts,
-  otherProducts,
-  type Product,
-} from '../data/products'
+import type {Product} from '../data/products'
 
 const categories = [
-  'Донат',
-  'Подписки',
-  'Предметы',
-  'Аккаунты',
-  'Ключи',
-  'Игровая валюта',
-  'Другое',
+  {label: 'Донат', type: 'topup'},
+  {label: 'Подписки', type: 'subscription'},
+  {label: 'Предметы', type: 'item'},
+  {label: 'Аккаунты', type: 'account'},
+  {label: 'Ключи', type: 'key'},
+  {label: 'Игровая валюта', type: 'currency'},
+  {label: 'Другое', type: 'other'},
 ]
 
 const API_URL = import.meta.env.VITE_API_URL
+
+const search = ref('')
+const type = ref('')
+const minPrice = ref('')
+const maxPrice = ref('')
 
 const promoCode = ref('')
 const promoError = ref('')
 const buyingSku = ref<string | null>(null)
 
-type ServerProduct = {
+let requestController: AbortController | null = null
+let requestId = 0
+
+type ServerProduct = Product & {
   id: number
-  sku: string
-  price: number
-  currency: 'RUB'
-  stock: number
 }
 
 const serverProducts = ref<Record<string, ServerProduct>>({})
 
+const hasFilters = computed(() =>
+    search.value.trim() !== '' ||
+    type.value !== '' ||
+    minPrice.value !== '' ||
+    maxPrice.value !== '',
+)
+
+const productsWithState = computed(() =>
+    Object.values(serverProducts.value),
+)
+
+function selectCategory(categoryType: string) {
+  type.value = type.value === categoryType ? '' : categoryType
+}
+
+function readFiltersFromUrl() {
+  const params = new URLSearchParams(window.location.search)
+
+  search.value = params.get('search') ?? ''
+  type.value = params.get('type') ?? ''
+  minPrice.value = params.get('min_price') ?? ''
+  maxPrice.value = params.get('max_price') ?? ''
+}
+
+function updateUrl() {
+  const params = new URLSearchParams()
+
+  if (search.value.trim()) {
+    params.set('search', search.value.trim())
+  }
+
+  if (type.value) {
+    params.set('type', type.value)
+  }
+
+  if (minPrice.value !== '') {
+    params.set('min_price', minPrice.value)
+  }
+
+  if (maxPrice.value !== '') {
+    params.set('max_price', maxPrice.value)
+  }
+
+  const query = params.toString()
+
+  window.history.replaceState(
+      {},
+      '',
+      query
+          ? `${window.location.pathname}?${query}`
+          : window.location.pathname,
+  )
+}
+
 async function loadProducts() {
-  const response = await fetch(`${API_URL}/products`)
+  const currentRequestId = ++requestId
+
+  requestController?.abort()
+  requestController = new AbortController()
+
+  const params = new URLSearchParams()
+
+  if (search.value.trim()) {
+    params.set('search', search.value.trim())
+  }
+
+  if (type.value) {
+    params.set('type', type.value)
+  }
+
+  if (minPrice.value !== '') {
+    params.set('min_price', minPrice.value)
+  }
+
+  if (maxPrice.value !== '') {
+    params.set('max_price', maxPrice.value)
+  }
+
+  const query = params.toString()
+
+  const response = await fetch(
+      `${API_URL}/products${query ? `?${query}` : ''}`,
+      {
+        signal: requestController.signal,
+      },
+  )
 
   if (!response.ok) {
     throw new Error('Failed to load products')
@@ -45,11 +128,15 @@ async function loadProducts() {
 
   const result = await response.json()
 
+  if (currentRequestId !== requestId) {
+    return
+  }
+
   serverProducts.value = Object.fromEntries(
       result.data.map((product: ServerProduct) => [
         product.sku,
         product,
-      ])
+      ]),
   )
 }
 
@@ -68,34 +155,31 @@ function handleStockUpdate(event: {
 
   console.log('[Stock] updated:', {
     sku: product.sku,
-    stock: event.stock,
+    stock: product.stock,
   })
 }
 
-function productWithServerState(product: Product): Product & {
-  stock: number
-} {
-  const server = serverProducts.value[product.sku]
+function handlePriceUpdate(event: {
+  product_id: number
+  price: number
+  currency: 'RUB'
+}) {
+  const product = Object.values(serverProducts.value)
+      .find(item => item.id === event.product_id)
 
-  return {
-    ...product,
-    price: server?.price ?? product.price,
-    currency: server?.currency ?? product.currency,
-    stock: server?.stock ?? 0,
+  if (!product) {
+    return
   }
+
+  product.price = event.price
+  product.currency = event.currency
+
+  console.log('[Price] updated:', {
+    sku: product.sku,
+    price: product.price,
+    currency: product.currency,
+  })
 }
-
-const popularProductsWithState = computed(() =>
-    popularProducts.map(productWithServerState)
-)
-
-const recommendedProductsWithState = computed(() =>
-    recommendedProducts.map(productWithServerState)
-)
-
-const otherProductsWithState = computed(() =>
-    otherProducts.map(productWithServerState)
-)
 
 async function handleBuy(product: Product) {
   if (buyingSku.value === product.sku) {
@@ -143,29 +227,45 @@ async function handleBuy(product: Product) {
   }
 }
 
-function handlePriceUpdate(event: {
-  product_id: number
-  price: number
-  currency: 'RUB'
-}) {
-  const product = Object.values(serverProducts.value)
-      .find(item => item.id === event.product_id)
+function handleHeaderSearch(event: Event) {
+  const customEvent = event as CustomEvent<string>
 
-  if (!product) return
-
-  product.price = event.price
-  product.currency = event.currency
-
-  console.log('[Price] updated:', {
-    sku: product.sku,
-    price: product.price,
-    currency: product.currency,
-  })
+  search.value = customEvent.detail ?? ''
 }
 
+watch(
+    [search, type, minPrice, maxPrice],
+    () => {
+      console.log('[Filters]', {
+        search: search.value,
+        type: type.value,
+        minPrice: minPrice.value,
+        maxPrice: maxPrice.value,
+      })
+
+      updateUrl()
+
+      loadProducts().catch(error => {
+        if (error?.name !== 'AbortError') {
+          console.error('Failed to load products:', error)
+        }
+      })
+    },
+)
+
 onMounted(() => {
+  readFiltersFromUrl()
+
+  window.addEventListener(
+      'catalog-search-changed',
+      handleHeaderSearch
+  )
+
+
   loadProducts().catch(error => {
-    console.error('Failed to load products:', error)
+    if (error?.name !== 'AbortError') {
+      console.error('Failed to load products:', error)
+    }
   })
 
   echo
@@ -175,6 +275,13 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  requestController?.abort()
+
+  window.removeEventListener(
+      'catalog-search-changed',
+      handleHeaderSearch
+  )
+
   echo.leaveChannel('products')
 })
 </script>
@@ -216,94 +323,107 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Popular -->
-    <div class="product-section" v-if="popularProducts.length">
-      <div class="product-section__header product-section__header--popular">
+
+    <!-- Search results -->
+    <div
+        v-if="hasFilters"
+        class="product-section"
+    >
+      <div class="product-section__header">
         <h2 class="product-section__title">
-          Популярные товары
+          Результаты поиска
         </h2>
 
-        <div class="categories">
-          <button
-              v-for="(category, index) in categories"
-              :key="category"
-              type="button"
-              class="category"
-              :class="{
-              'category--active': index === 0,
-            }"
-          >
-            <span
-                v-if="index === 0"
-                class="category__icon"
-            >
-              ◈
-            </span>
+        <span class="results-count">
+          {{ productsWithState.length }} товаров
+        </span>
+      </div>
 
-            {{ category }}
-          </button>
+      <div
+          v-if="productsWithState.length"
+          class="products__grid"
+      >
+        <ProductCard
+            v-for="product in productsWithState"
+            :key="product.sku"
+            :product="product"
+            @buy="handleBuy"
+        />
+      </div>
+
+      <div
+          v-else
+          class="empty-results"
+      >
+        Ничего не найдено
+      </div>
+    </div>
+
+    <!-- Normal catalog -->
+    <template v-else>
+
+      <!-- Popular -->
+      <div class="product-section">
+        <div class="product-section__header product-section__header--popular">
+          <h2 class="product-section__title">
+            Популярные товары
+          </h2>
+
+          <div class="categories">
+            <button
+                v-for="category in categories"
+                :key="category.label"
+                type="button"
+                class="category"
+                :class="{
+            'category--active': type === category.type,
+        }"
+                @click="selectCategory(category.type)"
+            >
+        <span
+            v-if="category.type === 'topup'"
+            class="category__icon"
+        >
+            ◈
+        </span>
+
+              {{ category.label }}
+            </button>
+          </div>
+        </div>
+
+        <div class="products__grid">
+          <ProductCard
+              v-for="product in productsWithState.slice(0, 5)"
+              :key="product.sku"
+              :product="product"
+              @buy="handleBuy"
+          />
         </div>
       </div>
 
-      <div class="products__grid">
-        <ProductCard
-            v-for="product in popularProductsWithState"
-            :key="product.sku"
-            :product="product"
-            @buy="handleBuy"
-        />
-      </div>
-    </div>
+      <!-- Remaining products -->
+      <div
+          v-if="productsWithState.length > 5"
+          class="product-section"
+      >
+        <div class="product-section__header">
+          <h2 class="product-section__title">
+            Другие товары
+          </h2>
+        </div>
 
-    <!-- Recommended -->
-    <div class="product-section" v-if="recommendedProducts.length">
-      <div class="product-section__header">
-        <h2 class="product-section__title">
-          Рекомендованные товары
-        </h2>
-
-        <button
-            class="show-all"
-            type="button"
-        >
-          Показать все
-        </button>
+        <div class="products__grid">
+          <ProductCard
+              v-for="product in productsWithState.slice(5)"
+              :key="product.sku"
+              :product="product"
+              @buy="handleBuy"
+          />
+        </div>
       </div>
 
-      <div class="products__grid">
-        <ProductCard
-            v-for="product in recommendedProductsWithState"
-            :key="product.sku"
-            :product="product"
-            @buy="handleBuy"
-        />
-      </div>
-    </div>
-
-    <!-- Other -->
-    <div class="product-section" v-if="otherProducts.length">
-      <div class="product-section__header">
-        <h2 class="product-section__title">
-          Другие товары
-        </h2>
-
-        <button
-            class="show-all"
-            type="button"
-        >
-          Показать все
-        </button>
-      </div>
-
-      <div class="products__grid">
-        <ProductCard
-            v-for="product in otherProductsWithState"
-            :key="product.sku"
-            :product="product"
-            @buy="handleBuy"
-        />
-      </div>
-    </div>
+    </template>
 
   </section>
 </template>

@@ -24,10 +24,26 @@ const images = import.meta.glob(
     }
 )
 
-function img(name: string) {
-  const path = `../${name}`
+function img(name?: string | null) {
+  const defaultImage = '../assets/img.png'
 
-  return images[path] as string
+  if (!name) {
+    return images[defaultImage] as string
+  }
+
+  const path = `../${name}`
+  const image = images[path] as string | undefined
+
+  return image ?? images[defaultImage] as string
+}
+
+function handleImageError(event: Event) {
+  const image = event.target as HTMLImageElement
+  const fallback = img(null)
+
+  if (image.src !== fallback) {
+    image.src = fallback
+  }
 }
 </script>
 
@@ -38,6 +54,7 @@ function img(name: string) {
           class="product-card__image"
           :src="img(product.image)"
           :alt="product.name"
+          @error="handleImageError"
       />
     </div>
 

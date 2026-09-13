@@ -26,6 +26,7 @@ interface Order {
   paid_at: string | null
   delivered_at: string | null
   reservation: string | null
+  reservation_expires_at: string | null
 }
 
 const route = useRoute()
@@ -270,19 +271,21 @@ const reservationSecondsLeft = ref(0)
 
 function updateReservationTimer() {
   if (
-      !order.value?.reservation ||
-      order.value.status !== 'created'
+      !order.value ||
+      order.value.status !== 'created' ||
+      !order.value.reservation_expires_at
   ) {
     reservationSecondsLeft.value = 0
     return
   }
 
-  const expiresAt = new Date(order.value.reservation).getTime()
-  const now = Date.now()
+  const expiresAt = new Date(
+      order.value.reservation_expires_at,
+  ).getTime()
 
   reservationSecondsLeft.value = Math.max(
       0,
-      Math.ceil((expiresAt - now) / 1000),
+      Math.ceil((expiresAt - Date.now()) / 1000),
   )
 }
 
@@ -298,8 +301,9 @@ const reservationTimeText = computed(() => {
 
 const reservationExpired = computed(() => {
   if (
-      !order.value?.reservation ||
-      order.value.status !== 'created'
+      !order.value ||
+      order.value.status !== 'created' ||
+      !order.value.reservation_expires_at
   ) {
     return false
   }
@@ -508,7 +512,7 @@ onUnmounted(() => {
           </p>
 
           <div
-              v-if="order.reservation && !reservationExpired"
+              v-if="order.reservation_expires_at && !reservationExpired"
               class="reservation-timer"
           >
             <span>
@@ -521,7 +525,7 @@ onUnmounted(() => {
           </div>
 
           <div
-              v-else-if="order.reservation && reservationExpired"
+              v-else-if="reservationExpired"
               class="reservation-expired"
           >
             Резерв товара истёк. Заказ больше нельзя оплатить.
@@ -552,7 +556,12 @@ onUnmounted(() => {
           <button
               class="action-button"
               type="button"
-              :disabled="paying || refreshingPrice || reservationExpired || priceChanged"
+              :disabled="
+        paying ||
+        refreshingPrice ||
+        reservationExpired ||
+        priceChanged
+    "
               @click="payOrder"
           >
             {{

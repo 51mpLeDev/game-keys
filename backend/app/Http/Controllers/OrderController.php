@@ -85,6 +85,8 @@ class OrderController extends Controller
             'paid_at' => $order->paid_at?->toISOString(),
             'delivered_at' => $order->delivered_at?->toISOString(),
 
+            'reservation_expires_at' => $order->reservation_expires_at?->toISOString(),
+
             'reservation' => $order->inventoryKeys
                 ->first(fn ($key) => $key->status === 'reserved')
                 ?->reserved_until?->toISOString(),

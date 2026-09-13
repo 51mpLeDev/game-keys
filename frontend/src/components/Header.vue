@@ -3,6 +3,8 @@ import {onBeforeUnmount, onMounted, ref} from 'vue'
 
 const catalogOpen = ref(false)
 
+const search = ref('')
+
 const categories = [
   'Игры и игровые сервисы',
   'Игровые ценности',
@@ -88,7 +90,23 @@ function handleDocumentClick(event: MouseEvent) {
   }
 }
 
+function readSearchFromUrl() {
+  const params = new URLSearchParams(window.location.search)
+
+  search.value = params.get('search') ?? ''
+}
+
+function handleSearchInput() {
+  window.dispatchEvent(
+      new CustomEvent('catalog-search-changed', {
+        detail: search.value,
+      })
+  )
+}
+
 onMounted(() => {
+  readSearchFromUrl()
+
   document.addEventListener('click', handleDocumentClick)
 })
 
@@ -180,6 +198,7 @@ onBeforeUnmount(() => {
                   @click="closeCatalog"
               >
                 Подборки
+
                 <span>›</span>
               </a>
 
@@ -201,8 +220,10 @@ onBeforeUnmount(() => {
       <!-- Search -->
       <div class="header__search">
         <input
+            v-model="search"
             type="search"
             placeholder="Игра, приложение или услуга..."
+            @input="handleSearchInput"
         />
 
         <button
@@ -217,6 +238,7 @@ onBeforeUnmount(() => {
             class="header__search-button"
             type="button"
             aria-label="Поиск"
+            @click="handleSearchInput"
         >
           ⌕
         </button>
@@ -287,6 +309,8 @@ onBeforeUnmount(() => {
   font-size: 10px;
   line-height: 1;
   font-weight: 700;
+
+  cursor: pointer;
 }
 
 .catalog-button__icon {
@@ -297,6 +321,7 @@ onBeforeUnmount(() => {
 /* =========================================================
    MEGA MENU
 ========================================================= */
+
 .catalog-menu {
   position: fixed;
 
@@ -354,6 +379,8 @@ onBeforeUnmount(() => {
   font-size: 9px;
   line-height: 1;
   font-weight: 600;
+
+  cursor: pointer;
 }
 
 .catalog-menu__category:hover,
@@ -407,6 +434,8 @@ onBeforeUnmount(() => {
   font-size: 9px;
   line-height: 11px;
   font-weight: 800;
+
+  text-decoration: none;
 }
 
 .catalog-menu__platform span {
@@ -420,6 +449,8 @@ onBeforeUnmount(() => {
   line-height: 10px;
 
   white-space: nowrap;
+
+  text-decoration: none;
 }
 
 .catalog-menu__item:hover {
@@ -447,6 +478,8 @@ onBeforeUnmount(() => {
   font-size: 8px;
   line-height: 11px;
   font-weight: 800;
+
+  text-decoration: none;
 }
 
 .catalog-menu__collections-title span {
@@ -469,6 +502,8 @@ onBeforeUnmount(() => {
   line-height: 10px;
 
   white-space: nowrap;
+
+  text-decoration: none;
 }
 
 .catalog-menu__collection-list a:hover {
@@ -534,6 +569,8 @@ onBeforeUnmount(() => {
   color: #778399;
 
   font-size: 24px;
+
+  cursor: pointer;
 }
 
 .header__search-button {
@@ -550,6 +587,8 @@ onBeforeUnmount(() => {
   color: #ffffff;
 
   font-size: 28px;
+
+  cursor: pointer;
 }
 
 /* =========================================================
@@ -572,5 +611,7 @@ onBeforeUnmount(() => {
   color: #8290a3;
 
   font-size: 13px;
+
+  cursor: pointer;
 }
 </style>
