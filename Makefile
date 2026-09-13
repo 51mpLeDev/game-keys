@@ -1,4 +1,4 @@
-.PHONY: help build up down restart logs ps shell migrate fresh seed test test-race install
+.PHONY: help build up down restart logs ps shell migrate fresh seed test test-race install artisan queue env
 
 help:
 	@echo "Game Keys"
@@ -43,8 +43,6 @@ ps:
 shell:
 	docker compose exec backend bash
 
-.PHONY: help build up down restart logs ps shell migrate fresh seed test test-race install artisan
-
 artisan:
 	docker compose exec backend php artisan $(filter-out $@,$(MAKECMDGOALS))
 
@@ -76,9 +74,15 @@ test:
 
 test-race:
 	docker compose -f docker-compose.yml -f docker-compose.test.yml up -d --force-recreate backend nginx
-	docker compose exec backend php artisan migrate:fresh --force
-	docker compose exec backend php artisan test \
-		--filter='(OrderCreationConcurrencyTest|PaymentWebhookConcurrencyTest|PromoCodeConcurrencyTest)'; \
+	docker compose -f docker-compose.yml -f docker-compose.test.yml exec \
+		-e DB_DATABASE=game_keys_test \
+		-e QUEUE_CONNECTION=sync \
+		backend php artisan migrate:fresh --force
+	docker compose -f docker-compose.yml -f docker-compose.test.yml exec \
+		-e DB_DATABASE=game_keys_test \
+		-e QUEUE_CONNECTION=sync \
+		backend php artisan test \
+		--filter='(LastUnitRaceTest|OrderCreationConcurrencyTest|PaymentWebhookConcurrencyTest|PromoCodeConcurrencyTest)'; \
 	status=$$?; \
 	docker compose up -d --force-recreate backend nginx; \
 	exit $$status
