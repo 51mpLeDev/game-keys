@@ -50,6 +50,12 @@ function selectCategory(categoryType: string) {
   type.value = type.value === categoryType ? '' : categoryType
 }
 
+function resetFilters() {
+  type.value = ''
+  minPrice.value = ''
+  maxPrice.value = ''
+}
+
 function readFiltersFromUrl() {
   const params = new URLSearchParams(window.location.search)
 
@@ -330,13 +336,23 @@ onUnmounted(() => {
         class="product-section"
     >
       <div class="product-section__header">
-        <h2 class="product-section__title">
-          Результаты поиска
-        </h2>
+        <div class="product-section__title-wrap">
+          <h2 class="product-section__title">
+            Результаты поиска
+          </h2>
 
-        <span class="results-count">
-          {{ productsWithState.length }} товаров
-        </span>
+          <span class="results-count">
+            {{ productsWithState.length }} товаров
+          </span>
+        </div>
+
+        <button
+            type="button"
+            class="reset-filters"
+            @click="resetFilters"
+        >
+          Сбросить фильтры
+        </button>
       </div>
 
       <div
@@ -470,6 +486,41 @@ onUnmounted(() => {
   font-size: 14px;
   line-height: 20px;
   font-weight: 800;
+}
+
+.product-section__title-wrap {
+  min-width: 0;
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.reset-filters {
+  height: 25px;
+
+  padding: 0 9px;
+
+  border: 0;
+  border-radius: 7px;
+
+  background: #f1f3f6;
+  color: #7f8792;
+
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 700;
+
+  cursor: pointer;
+
+  transition:
+      background-color 0.15s ease,
+      color 0.15s ease;
+}
+
+.reset-filters:hover {
+  background: #e7e9ed;
+  color: #263242;
 }
 
 /* Categories */
