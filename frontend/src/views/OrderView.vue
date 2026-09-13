@@ -220,7 +220,7 @@ async function payOrder() {
     paying.value = true
 
     const response = await fetch(
-        '${API_URL}/webhooks/payment',
+        `${API_URL}/webhooks/payment`,
         {
           method: 'POST',
           headers: {
